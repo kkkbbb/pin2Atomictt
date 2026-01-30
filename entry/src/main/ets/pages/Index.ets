@@ -345,11 +345,10 @@ struct Index {
         .backgroundColor($r('app.color.service_card_background'))
         .borderRadius(16)
         .justifyContent(FlexAlign.Center)
-        .opacity(this.isOpen ? 1 : 0.5)
+        .opacity(this.isOpen ? 1 : 0.7)
         .onClick(() => {
-          if (this.isOpen) {
-            this.selectOrderType(OrderType.PICKUP);
-          }
+          // 即使店铺休息也允许浏览菜单
+          this.selectOrderType(OrderType.PICKUP);
         })
       }
 
@@ -374,11 +373,10 @@ struct Index {
         .backgroundColor($r('app.color.service_card_background'))
         .borderRadius(16)
         .justifyContent(FlexAlign.Center)
-        .opacity(this.isOpen ? 1 : 0.5)
+        .opacity(this.isOpen ? 1 : 0.7)
         .onClick(() => {
-          if (this.isOpen) {
-            this.selectOrderType(OrderType.DINE_IN);
-          }
+          // 即使店铺休息也允许浏览菜单
+          this.selectOrderType(OrderType.DINE_IN);
         })
       }
     }
