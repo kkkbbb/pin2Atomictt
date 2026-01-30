@@ -78,81 +78,115 @@ struct Index {
   // 店铺头部信息
   @Builder
   StoreHeader() {
-    Row() {
-      // 店铺图片
-      if (this.storeImage) {
-        Image(this.storeImage)
-          .width(80)
-          .height(80)
-          .borderRadius(8)
-          .objectFit(ImageFit.Cover)
-      } else {
-        Image($r('app.media.startIcon'))
-          .width(80)
-          .height(80)
-          .borderRadius(8)
-          .objectFit(ImageFit.Cover)
-      }
-
-      // 店铺信息
+    Stack() {
+      // 背景层 - 店铺图片放大模糊效果
       Column() {
-        // 店铺名称
-        Text(this.storeName)
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-
-        // 状态标签行
-        Row() {
-          // 商家状态标签
-          if (this.storeStatus) {
-            Text(this.storeStatus)
-              .fontSize(11)
-              .fontColor($r('app.color.text_secondary'))
-              .backgroundColor('#F0F0F0')
-              .borderRadius(4)
-              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-          }
-
-          // 今日状态标签
-          if (this.todayStatus) {
-            Text(this.todayStatus)
-              .fontSize(11)
-              .fontColor($r('app.color.text_secondary'))
-              .backgroundColor('#F0F0F0')
-              .borderRadius(4)
-              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-              .margin({ left: 6 })
-          }
-
-          // 关于商户按钮
-          Row() {
-            Text('關於商戶')
-              .fontSize(11)
-              .fontColor($r('app.color.text_secondary'))
-            Text('\u24D8')
-              .fontSize(11)
-              .fontColor($r('app.color.text_secondary'))
-              .margin({ left: 2 })
-          }
-          .backgroundColor($r('app.color.card_background'))
-          .borderRadius(4)
-          .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-          .border({ width: 1, color: '#E0E0E0' })
-          .margin({ left: 6 })
-          .onClick(() => {
-            this.showStoreInfo();
-          })
+        if (this.storeImage) {
+          Image(this.storeImage)
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+            .blur(20)
+            .opacity(0.6)
         }
-        .margin({ top: 8 })
       }
-      .alignItems(HorizontalAlign.Start)
-      .margin({ left: 12 })
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#DBD7D8')
+
+      // 底部圆角遮罩
+      Column()
+        .width('100%')
+        .height(16)
+        .backgroundColor($r('app.color.page_background'))
+        .borderRadius({ topLeft: 16, topRight: 16 })
+        .position({ x: 0, y: '100%' })
+        .translate({ y: -16 })
+
+      // 内容层
+      Row() {
+        // 店铺图片
+        if (this.storeImage) {
+          Image(this.storeImage)
+            .width(80)
+            .height(80)
+            .borderRadius(6)
+            .objectFit(ImageFit.Cover)
+            .shadow({
+              radius: 4,
+              color: 'rgba(0, 0, 0, 0.15)',
+              offsetX: 0,
+              offsetY: 2
+            })
+        } else {
+          Image($r('app.media.startIcon'))
+            .width(80)
+            .height(80)
+            .borderRadius(6)
+            .objectFit(ImageFit.Cover)
+        }
+
+        // 店铺信息
+        Column() {
+          // 店铺名称
+          Text(this.storeName)
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+
+          // 状态标签行
+          Row() {
+            // 商家状态标签
+            if (this.storeStatus) {
+              Text(this.storeStatus)
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor('rgba(255, 255, 255, 0.9)')
+                .borderRadius(4)
+                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+            }
+
+            // 今日状态标签
+            if (this.todayStatus) {
+              Text(this.todayStatus)
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor('rgba(255, 255, 255, 0.9)')
+                .borderRadius(4)
+                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+                .margin({ left: 6 })
+            }
+
+            // 关于商户按钮
+            Row() {
+              Text('關於商戶')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+              Text('\u24D8')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .margin({ left: 2 })
+            }
+            .backgroundColor('rgba(255, 255, 255, 0.95)')
+            .borderRadius(4)
+            .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+            .border({ width: 1, color: '#E0E0E0' })
+            .margin({ left: 6 })
+            .onClick(() => {
+              this.showStoreInfo();
+            })
+          }
+          .margin({ top: 8 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .margin({ left: 12 })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 16, bottom: 24 })
+      .alignItems(VerticalAlign.Top)
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 20, bottom: 20 })
-    .alignItems(VerticalAlign.Top)
-    .backgroundColor($r('app.color.card_background'))
+    .height(130)
   }
 
   // 登录卡片
