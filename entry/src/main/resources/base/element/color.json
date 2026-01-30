@@ -39,6 +39,18 @@
     {
       "name": "service_card_background",
       "value": "#F8F8F8"
+    },
+    {
+      "name": "notice_background",
+      "value": "#FFFACD"
+    },
+    {
+      "name": "tab_active",
+      "value": "#FFD700"
+    },
+    {
+      "name": "tab_inactive",
+      "value": "#999999"
     }
   ]
 }

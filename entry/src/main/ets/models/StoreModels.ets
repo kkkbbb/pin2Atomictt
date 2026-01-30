@@ -102,6 +102,7 @@ export interface ProductGroup {
   takeout: string;
   dinein: string;
   delivery: string;
+  time_range?: string; // 供应时间范围
   products: Product[];
 }
 

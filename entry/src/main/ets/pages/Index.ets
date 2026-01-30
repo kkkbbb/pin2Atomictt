@@ -578,7 +578,13 @@ struct Index {
       params: {
         orderType: orderType,
         themeColor: this.themeColor,
-        storeId: ApiConfig.DEFAULT_STORE_ID
+        storeId: ApiConfig.DEFAULT_STORE_ID,
+        storeName: this.storeName,
+        storeImage: this.storeImage,
+        storeStatus: this.storeStatus,
+        todayStatus: this.todayStatus,
+        isOpen: this.isOpen,
+        notices: this.notices
       }
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);

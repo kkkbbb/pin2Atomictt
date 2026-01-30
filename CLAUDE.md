@@ -11,18 +11,27 @@ OpenHarmony (HarmonyOS) Atomic Service application using ArkUI framework with ET
 ## Build Commands
 
 ```bash
-# Build debug version
-hvigor build
+# Set environment variable (required)
+export DEVECO_SDK_HOME="/e/DevEco Studio/sdk"
 
-# Build release version
-hvigor build --mode release
+# Build HAP/APP packages
+node "/e/DevEco Studio/tools/hvigor/bin/hvigorw.js" assembleApp
 
 # Clean build artifacts
-hvigor clean
+node "/e/DevEco Studio/tools/hvigor/bin/hvigorw.js" clean
 
-# Run on device/emulator
-hvigor run
+# List available tasks
+node "/e/DevEco Studio/tools/hvigor/bin/hvigorw.js" tasks
+
+# Stop hvigor daemon (if environment changed)
+node "/e/DevEco Studio/tools/hvigor/bin/hvigorw.js" --stop-daemon
 ```
+
+**Build Output:**
+- HAP: `entry/build/default/outputs/default/entry-default-unsigned.hap`
+- APP: `build/outputs/default/pin2Atomictt-default-unsigned.app`
+
+**Note:** For signed builds, configure `signingConfigs` in `build-profile.json5`.
 
 ## Testing
 
