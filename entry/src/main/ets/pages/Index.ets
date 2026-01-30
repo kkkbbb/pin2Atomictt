@@ -43,10 +43,6 @@ struct Index {
             // 服务选择区域
             this.ServiceSection()
 
-            // 底部留白
-            Blank()
-              .height(40)
-
             // 页脚
             this.Footer()
           }
@@ -82,104 +78,81 @@ struct Index {
   // 店铺头部信息
   @Builder
   StoreHeader() {
-    Stack() {
-      // 背景层
-      Column()
-        .width('100%')
-        .height('100%')
-        .backgroundColor('#E0E0E0')
-
-      // 内容层
-      Row() {
-        // 店铺图片
-        Column() {
-          if (this.storeImage) {
-            Image(this.storeImage)
-              .width(120)
-              .height(120)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .shadow({
-                radius: 8,
-                color: 'rgba(0, 0, 0, 0.15)',
-                offsetX: 0,
-                offsetY: 4
-              })
-          } else {
-            Image($r('app.media.startIcon'))
-              .width(120)
-              .height(120)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .shadow({
-                radius: 8,
-                color: 'rgba(0, 0, 0, 0.15)',
-                offsetX: 0,
-                offsetY: 4
-              })
-          }
-        }
-        .margin({ left: 20, top: 30 })
-
-        // 店铺信息
-        Column() {
-          // 店铺名称
-          Text(this.storeName)
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary'))
-
-          // 状态标签行
-          Row() {
-            // 商家状态标签
-            if (this.storeStatus) {
-              Text(this.storeStatus)
-                .fontSize(12)
-                .fontColor($r('app.color.text_secondary'))
-                .backgroundColor($r('app.color.tag_background'))
-                .borderRadius(4)
-                .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            }
-
-            // 今日状态标签
-            if (this.todayStatus) {
-              Text(this.todayStatus)
-                .fontSize(12)
-                .fontColor($r('app.color.text_secondary'))
-                .backgroundColor($r('app.color.tag_background'))
-                .borderRadius(4)
-                .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                .margin({ left: 8 })
-            }
-
-            // 关于商户按钮
-            Row() {
-              Text('關於商戶')
-                .fontSize(12)
-                .fontColor($r('app.color.text_secondary'))
-              Text(' \u24D8')
-                .fontSize(12)
-                .fontColor($r('app.color.text_secondary'))
-            }
-            .backgroundColor($r('app.color.card_background'))
-            .borderRadius(4)
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            .border({ width: 1, color: '#E0E0E0' })
-            .margin({ left: 8 })
-            .onClick(() => {
-              this.showStoreInfo();
-            })
-          }
-          .margin({ top: 12 })
-        }
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: 16, top: 40 })
+    Row() {
+      // 店铺图片
+      if (this.storeImage) {
+        Image(this.storeImage)
+          .width(80)
+          .height(80)
+          .borderRadius(8)
+          .objectFit(ImageFit.Cover)
+      } else {
+        Image($r('app.media.startIcon'))
+          .width(80)
+          .height(80)
+          .borderRadius(8)
+          .objectFit(ImageFit.Cover)
       }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
+
+      // 店铺信息
+      Column() {
+        // 店铺名称
+        Text(this.storeName)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+
+        // 状态标签行
+        Row() {
+          // 商家状态标签
+          if (this.storeStatus) {
+            Text(this.storeStatus)
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+              .backgroundColor('#F0F0F0')
+              .borderRadius(4)
+              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+          }
+
+          // 今日状态标签
+          if (this.todayStatus) {
+            Text(this.todayStatus)
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+              .backgroundColor('#F0F0F0')
+              .borderRadius(4)
+              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+              .margin({ left: 6 })
+          }
+
+          // 关于商户按钮
+          Row() {
+            Text('關於商戶')
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+            Text('\u24D8')
+              .fontSize(11)
+              .fontColor($r('app.color.text_secondary'))
+              .margin({ left: 2 })
+          }
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius(4)
+          .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+          .border({ width: 1, color: '#E0E0E0' })
+          .margin({ left: 6 })
+          .onClick(() => {
+            this.showStoreInfo();
+          })
+        }
+        .margin({ top: 8 })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: 12 })
     }
     .width('100%')
-    .height(180)
+    .padding({ left: 16, right: 16, top: 20, bottom: 20 })
+    .alignItems(VerticalAlign.Top)
+    .backgroundColor($r('app.color.card_background'))
   }
 
   // 登录卡片
@@ -190,16 +163,16 @@ struct Index {
       Row() {
         Column() {
           Text('歡迎你來！')
-            .fontSize(20)
+            .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.text_primary'))
 
           Row() {
             Text('登入享更多優惠！')
-              .fontSize(14)
+              .fontSize(13)
               .fontColor($r('app.color.text_hint'))
             Text(' >')
-              .fontSize(14)
+              .fontSize(13)
               .fontColor($r('app.color.text_hint'))
           }
           .margin({ top: 4 })
@@ -209,24 +182,24 @@ struct Index {
 
         // 登录按钮
         Button('即刻登入')
-          .fontSize(16)
+          .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .backgroundColor(this.themeColor)
-          .borderRadius(25)
-          .height(50)
-          .width(120)
+          .borderRadius(20)
+          .height(40)
+          .width(100)
           .onClick(() => {
             this.loginWithHuaweiID();
           })
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 20, bottom: 20 })
+      .padding({ left: 16, right: 16, top: 16, bottom: 16 })
 
       // 分隔线
       Divider()
-        .color($r('app.color.divider'))
-        .width('90%')
+        .color('#EEEEEE')
+        .width('100%')
 
       // 功能入口
       Row() {
@@ -234,7 +207,7 @@ struct Index {
         Row() {
           this.OrderIcon()
           Text('我的訂單')
-            .fontSize(16)
+            .fontSize(15)
             .fontColor($r('app.color.text_primary'))
             .margin({ left: 8 })
         }
@@ -247,14 +220,14 @@ struct Index {
         // 分隔线
         Divider()
           .vertical(true)
-          .height(24)
-          .color($r('app.color.divider'))
+          .height(20)
+          .color('#EEEEEE')
 
         // 我的优惠
         Row() {
           this.CouponIcon()
           Text('我的優惠')
-            .fontSize(16)
+            .fontSize(15)
             .fontColor($r('app.color.text_primary'))
             .margin({ left: 8 })
         }
@@ -265,65 +238,91 @@ struct Index {
         })
       }
       .width('100%')
-      .height(60)
+      .height(50)
     }
     .width('92%')
     .backgroundColor($r('app.color.card_background'))
-    .borderRadius(16)
+    .borderRadius(12)
     .margin({ top: 16 })
     .shadow({
-      radius: 8,
-      color: 'rgba(0, 0, 0, 0.05)',
+      radius: 4,
+      color: 'rgba(0, 0, 0, 0.08)',
       offsetX: 0,
       offsetY: 2
     })
   }
 
-  // 订单图标
+  // 订单图标 - 文档样式
   @Builder
   OrderIcon() {
     Stack() {
+      // 文档外框
       Column()
-        .width(24)
-        .height(28)
-        .borderRadius(4)
+        .width(20)
+        .height(24)
+        .borderRadius(3)
         .border({ width: 2, color: this.themeColor })
+      // 文档内横线
       Column() {
-        Divider().color(this.themeColor).width(12)
-        Divider().color(this.themeColor).width(12).margin({ top: 4 })
-        Divider().color(this.themeColor).width(12).margin({ top: 4 })
+        Column()
+          .width(10)
+          .height(2)
+          .backgroundColor(this.themeColor)
+          .borderRadius(1)
+        Column()
+          .width(10)
+          .height(2)
+          .backgroundColor(this.themeColor)
+          .borderRadius(1)
+          .margin({ top: 3 })
+        Column()
+          .width(10)
+          .height(2)
+          .backgroundColor(this.themeColor)
+          .borderRadius(1)
+          .margin({ top: 3 })
       }
       .justifyContent(FlexAlign.Center)
     }
-    .width(28)
-    .height(28)
+    .width(24)
+    .height(24)
   }
 
-  // 优惠图标
+  // 优惠图标 - 票券样式
   @Builder
   CouponIcon() {
     Stack() {
-      Row() {
-        Column()
-          .width(10)
-          .height(24)
-          .backgroundColor(this.themeColor)
-          .borderRadius({ topLeft: 4, bottomLeft: 4 })
-        Column()
-          .width(4)
-          .height(8)
-          .backgroundColor($r('app.color.card_background'))
-          .borderRadius(4)
-        Column()
-          .width(10)
-          .height(24)
-          .backgroundColor(this.themeColor)
-          .borderRadius({ topRight: 4, bottomRight: 4 })
-      }
-      .alignItems(VerticalAlign.Center)
+      // 左半票券
+      Column()
+        .width(9)
+        .height(18)
+        .backgroundColor(this.themeColor)
+        .borderRadius({ topLeft: 3, bottomLeft: 3 })
+        .position({ x: 0, y: 3 })
+      // 右半票券
+      Column()
+        .width(9)
+        .height(18)
+        .backgroundColor(this.themeColor)
+        .borderRadius({ topRight: 3, bottomRight: 3 })
+        .position({ x: 15, y: 3 })
+      // 中间锯齿上
+      Column()
+        .width(6)
+        .height(6)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(3)
+        .position({ x: 9, y: 0 })
+      // 中间锯齿下
+      Column()
+        .width(6)
+        .height(6)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(3)
+        .position({ x: 9, y: 18 })
     }
-    .width(28)
-    .height(28)
+    .width(24)
+    .height(24)
   }
 
   // 服务选择区域
@@ -335,19 +334,24 @@ struct Index {
         Column() {
           this.PickupIcon()
           Text('自取')
-            .fontSize(18)
+            .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-            .margin({ top: 16 })
+            .margin({ top: 12 })
         }
         .layoutWeight(1)
-        .height(200)
-        .backgroundColor($r('app.color.service_card_background'))
-        .borderRadius(16)
+        .aspectRatio(1)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(12)
         .justifyContent(FlexAlign.Center)
+        .shadow({
+          radius: 4,
+          color: 'rgba(0, 0, 0, 0.08)',
+          offsetX: 0,
+          offsetY: 2
+        })
         .opacity(this.isOpen ? 1 : 0.7)
         .onClick(() => {
-          // 即使店铺休息也允许浏览菜单
           this.selectOrderType(OrderType.PICKUP);
         })
       }
@@ -363,19 +367,24 @@ struct Index {
         Column() {
           this.DineInIcon()
           Text('堂食')
-            .fontSize(18)
+            .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-            .margin({ top: 16 })
+            .margin({ top: 12 })
         }
         .layoutWeight(1)
-        .height(200)
-        .backgroundColor($r('app.color.service_card_background'))
-        .borderRadius(16)
+        .aspectRatio(1)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(12)
         .justifyContent(FlexAlign.Center)
+        .shadow({
+          radius: 4,
+          color: 'rgba(0, 0, 0, 0.08)',
+          offsetX: 0,
+          offsetY: 2
+        })
         .opacity(this.isOpen ? 1 : 0.7)
         .onClick(() => {
-          // 即使店铺休息也允许浏览菜单
           this.selectOrderType(OrderType.DINE_IN);
         })
       }
@@ -384,70 +393,93 @@ struct Index {
     .margin({ top: 16 })
   }
 
-  // 自取图标
+  // 自取图标 - 购物袋
   @Builder
   PickupIcon() {
     Stack() {
+      // 袋子主体
       Column()
-        .width(50)
-        .height(55)
+        .width(48)
+        .height(45)
         .backgroundColor('transparent')
         .border({ width: 3, color: '#333333' })
-        .borderRadius({ bottomLeft: 8, bottomRight: 8 })
-        .margin({ top: 15 })
+        .borderRadius(6)
+        .position({ x: 6, y: 25 })
+      // 袋子提手 - 弧形
       Column()
-        .width(56)
-        .height(20)
+        .width(28)
+        .height(18)
         .backgroundColor('transparent')
         .border({ width: 3, color: '#333333' })
-        .borderRadius({ topLeft: 4, topRight: 4 })
+        .borderRadius({ topLeft: 14, topRight: 14 })
+        .position({ x: 16, y: 10 })
+      // 黄色条纹
       Column()
         .width(12)
-        .height(40)
+        .height(38)
         .backgroundColor(this.themeColor)
         .borderRadius(2)
-        .position({ x: 5, y: 20 })
+        .position({ x: 10, y: 29 })
     }
-    .width(70)
-    .height(80)
+    .width(60)
+    .height(75)
   }
 
-  // 堂食图标
+  // 堂食图标 - 餐盖
   @Builder
   DineInIcon() {
     Stack() {
+      // 盘子底座（黄色）
       Column()
-        .width(60)
-        .height(12)
+        .width(58)
+        .height(8)
         .backgroundColor(this.themeColor)
         .borderRadius(2)
-        .position({ x: 5, y: 58 })
+        .position({ x: 1, y: 58 })
+      // 餐盖主体（半圆形）
       Column()
-        .width(60)
-        .height(35)
+        .width(58)
+        .height(30)
         .backgroundColor('transparent')
         .border({ width: 3, color: '#333333' })
-        .borderRadius({ topLeft: 30, topRight: 30, bottomLeft: 4, bottomRight: 4 })
-        .position({ x: 5, y: 25 })
+        .borderRadius({ topLeft: 30, topRight: 30, bottomLeft: 2, bottomRight: 2 })
+        .position({ x: 1, y: 28 })
+      // 餐盖把手
       Column()
         .width(16)
         .height(8)
         .backgroundColor('transparent')
         .border({ width: 3, color: '#333333' })
-        .borderRadius(4)
-        .position({ x: 27, y: 20 })
+        .borderRadius({ topLeft: 8, topRight: 8 })
+        .position({ x: 22, y: 22 })
+      // 蒸汽波浪线
       Column() {
-        Text('~').fontSize(16).fontColor('#333333')
-      }.position({ x: 20, y: 2 })
+        Text('~')
+          .fontSize(18)
+          .fontColor('#333333')
+          .fontWeight(FontWeight.Bold)
+      }
+      .position({ x: 10, y: 6 })
+      .rotate({ angle: 90 })
       Column() {
-        Text('~').fontSize(16).fontColor('#333333')
-      }.position({ x: 32, y: 5 })
+        Text('~')
+          .fontSize(20)
+          .fontColor('#333333')
+          .fontWeight(FontWeight.Bold)
+      }
+      .position({ x: 26, y: 3 })
+      .rotate({ angle: 90 })
       Column() {
-        Text('~').fontSize(16).fontColor('#333333')
-      }.position({ x: 44, y: 2 })
+        Text('~')
+          .fontSize(18)
+          .fontColor('#333333')
+          .fontWeight(FontWeight.Bold)
+      }
+      .position({ x: 42, y: 6 })
+      .rotate({ angle: 90 })
     }
-    .width(70)
-    .height(80)
+    .width(60)
+    .height(75)
   }
 
   // 页脚
@@ -455,16 +487,16 @@ struct Index {
   Footer() {
     Row() {
       Text('Powered by ')
-        .fontSize(14)
+        .fontSize(13)
         .fontColor($r('app.color.text_hint'))
       Text('PinMe')
-        .fontSize(14)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_secondary'))
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#FFD700')
     }
     .width('100%')
     .justifyContent(FlexAlign.Center)
-    .padding({ bottom: 20 })
+    .padding({ top: 30, bottom: 20 })
   }
 
   aboutToAppear() {

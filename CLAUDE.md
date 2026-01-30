@@ -71,6 +71,41 @@ entry/src/main/ets/
     └── MenuPage.ets           # Product menu page
 ```
 
+## Page Routing
+
+Pages are registered in `entry/src/main/resources/base/profile/main_pages.json`.
+
+**Navigation Pattern:** Use `router.pushUrl()` for page navigation:
+```typescript
+import { router } from '@kit.ArkUI';
+
+router.pushUrl({
+  url: 'pages/MenuPage',
+  params: { orderType: OrderType.PICKUP, ... }
+});
+
+// Receive params in target page
+const params = router.getParams() as Record<string, Object>;
+```
+
+**Note:** Do NOT use `router.pushNamedRoute()` unless `routerMap` is configured in `module.json5`.
+
+## Page Structure
+
+### Index.ets (Store Home)
+- StoreHeader: Store image, name, status tags
+- LoginCard: Login prompt, order/coupon shortcuts
+- ServiceSection: Pickup/Dine-in selection cards
+
+### MenuPage.ets (Product Menu)
+UI components (H5 replica):
+- **StoreHeader**: Back button, store image (80x80), name, status tags, "關於商戶" button
+- **NoticeBar**: Yellow background (#FFFACD), expandable announcements
+- **TabBar**: 主頁/點餐/歷史訂單 tabs with active indicator
+- **ServiceHeader**: Service type icon + language toggle (繁/简)
+- **CategoryList**: Left sidebar (85px), synchronized scrolling
+- **ProductList**: Product cards with "供應時間" in category headers
+
 **UI Pattern:** Declarative ArkUI components using decorators:
 - `@Entry` - Page entry point
 - `@Component` - UI component
@@ -151,3 +186,6 @@ Theme colors defined in `resources/base/element/color.json`:
 - `text_primary`: #333333
 - `text_secondary`: #666666
 - `text_hint`: #999999
+- `notice_background`: #FFFACD (announcement bar)
+- `tab_active`: #FFD700 (active tab indicator)
+- `tab_inactive`: #999999 (inactive tab text)
