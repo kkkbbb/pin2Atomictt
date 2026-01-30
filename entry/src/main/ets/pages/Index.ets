@@ -573,8 +573,8 @@ struct Index {
    */
   private selectOrderType(orderType: OrderType): void {
     hilog.info(DOMAIN, TAG, 'Select order type: %{public}d', orderType);
-    router.pushNamedRoute({
-      name: 'MenuPage',
+    router.pushUrl({
+      url: 'pages/MenuPage',
       params: {
         orderType: orderType,
         themeColor: this.themeColor,
