@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router, promptAction, window } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import { webview } from '@kit.ArkWeb';
 import { apiService } from '../services/ApiService';
 import {
   OrderDetailData,
@@ -28,6 +28,9 @@ struct OrderDetailPage {
   @State themeColor: string = '#FFD700';
   @State topSafeHeight: number = 0;
   @State currencySymbol: string = '$';
+  @State showPaymentWebView: boolean = false;
+  @State paymentUrl: string = '';
+  private webController: webview.WebviewController = new webview.WebviewController();
 
   // 支付方式列表
   private paymentMethods: PaymentMethod[] = [
@@ -175,16 +178,16 @@ struct OrderDetailPage {
       const response = await apiService.payOrder(payParams);
 
       if (response.code === 200 && response.data && response.data.url) {
-        hilog.info(DOMAIN, TAG, 'Payment URL obtained, redirecting...');
+        hilog.info(DOMAIN, TAG, 'Payment URL obtained: %{public}s', response.data.url);
 
-        // 关闭弹窗
+        // 关闭支付方式选择弹窗
         this.showPaymentSheet = false;
 
-        // 使用系统浏览器打开支付链接
-        const context = getContext(this) as common.UIAbilityContext;
-        await context.openLink(response.data.url);
+        // 使用内嵌WebView打开支付链接
+        this.paymentUrl = response.data.url;
+        this.showPaymentWebView = true;
 
-        hilog.info(DOMAIN, TAG, 'Redirected to payment page');
+        hilog.info(DOMAIN, TAG, 'Opening payment WebView');
       } else {
         promptAction.showToast({
           message: '獲取支付鏈接失敗，請重試',
@@ -416,6 +419,11 @@ struct OrderDetailPage {
       // 支付方式选择弹窗
       if (this.showPaymentSheet) {
         this.PaymentSheet()
+      }
+
+      // 支付WebView全屏弹层
+      if (this.showPaymentWebView) {
+        this.PaymentWebView()
       }
     }
     .width('100%')
@@ -852,5 +860,81 @@ struct OrderDetailPage {
       default:
         return '';
     }
+  }
+
+  // 关闭支付WebView
+  closePaymentWebView(): void {
+    this.showPaymentWebView = false;
+    this.paymentUrl = '';
+    // 刷新订单状态
+    this.refreshOrderStatus();
+  }
+
+  // 支付WebView全屏组件
+  @Builder
+  PaymentWebView() {
+    Column() {
+      // 顶部安全区域
+      Column()
+        .width('100%')
+        .height(this.topSafeHeight)
+        .backgroundColor('#FFFFFF')
+
+      // 顶部导航栏
+      Row() {
+        Row() {
+          Text('✕')
+            .fontSize(20)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#333333')
+        }
+        .width(40)
+        .height(40)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          this.closePaymentWebView();
+        })
+
+        Text('支付')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#333333')
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+
+        Row()
+          .width(40)
+      }
+      .width('100%')
+      .height(50)
+      .padding({ left: 8, right: 8 })
+      .backgroundColor('#FFFFFF')
+      .border({ width: { bottom: 0.5 }, color: '#EEEEEE' })
+
+      // WebView内容
+      Web({ src: this.paymentUrl, controller: this.webController })
+        .layoutWeight(1)
+        .width('100%')
+        .javaScriptAccess(true)
+        .domStorageAccess(true)
+        .mixedMode(MixedMode.All)
+        .onPageBegin((event) => {
+          hilog.info(DOMAIN, TAG, 'WebView page begin: %{public}s', event?.url || '');
+        })
+        .onPageEnd((event) => {
+          hilog.info(DOMAIN, TAG, 'WebView page end: %{public}s', event?.url || '');
+          // 检测支付成功回调URL
+          const url = event?.url || '';
+          if (url.includes('success') || url.includes('callback') || url.includes('return')) {
+            hilog.info(DOMAIN, TAG, 'Payment may be completed, URL: %{public}s', url);
+          }
+        })
+        .onErrorReceive((event) => {
+          hilog.error(DOMAIN, TAG, 'WebView error: %{public}s', JSON.stringify(event?.error));
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#FFFFFF')
   }
 }
