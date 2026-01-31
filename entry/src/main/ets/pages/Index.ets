@@ -418,7 +418,8 @@ struct Index {
               offsetY: 2
             })
         } else {
-          Image($r('app.media.startIcon'))
+          // 无店铺图片时显示占位图
+          Image('https://spics.wantu.cn/7de3bb719f90f1b80a0b4995d69df0ca.png')
             .width(80)
             .height(80)
             .borderRadius(6)
@@ -564,49 +565,52 @@ struct Index {
       .width('100%')
       .padding({ left: 16, right: 16, top: 16, bottom: 16 })
 
-      // 分隔线
-      Divider()
-        .color('#EEEEEE')
-        .width('100%')
-
-      // 功能入口
-      Row() {
-        // 我的订单
-        Row() {
-          this.OrderIcon()
-          Text('我的訂單')
-            .fontSize(15)
-            .fontColor($r('app.color.text_primary'))
-            .margin({ left: 8 })
-        }
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .onClick(() => {
-          this.goToOrders();
-        })
-
+      // 功能入口 - 只有自取时移到服务卡片中，这里不显示
+      if (this.hasDineIn || !this.hasTakeout) {
         // 分隔线
         Divider()
-          .vertical(true)
-          .height(20)
           .color('#EEEEEE')
+          .width('100%')
 
-        // 我的优惠
+        // 功能入口
         Row() {
-          this.CouponIcon()
-          Text('我的優惠')
-            .fontSize(15)
-            .fontColor($r('app.color.text_primary'))
-            .margin({ left: 8 })
+          // 我的订单
+          Row() {
+            this.OrderIcon()
+            Text('我的訂單')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ left: 8 })
+          }
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            this.goToOrders();
+          })
+
+          // 分隔线
+          Divider()
+            .vertical(true)
+            .height(20)
+            .color('#EEEEEE')
+
+          // 我的优惠
+          Row() {
+            this.CouponIcon()
+            Text('我的優惠')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ left: 8 })
+          }
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            this.goToCoupons();
+          })
         }
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-        .onClick(() => {
-          this.goToCoupons();
-        })
+        .width('100%')
+        .height(50)
       }
-      .width('100%')
-      .height(50)
     }
     .width('92%')
     .backgroundColor($r('app.color.card_background'))
@@ -696,9 +700,56 @@ struct Index {
   // 服务选择区域
   @Builder
   ServiceSection() {
-    Row() {
-      // 自取卡片
-      if (this.hasTakeout) {
+    if (this.hasTakeout && !this.hasDineIn && this.hasLoginMethods) {
+      // 组合卡片布局：我的订单/我的优惠（上下） + 自取
+      Row() {
+        // 左侧功能入口（上下排列，每项图标在上文字在下）
+        Column() {
+          // 我的订单
+          Column() {
+            this.OrderIcon()
+            Text('我的訂單')
+              .fontSize(12)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ top: 4 })
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            this.goToOrders();
+          })
+
+          // 分隔线
+          Divider()
+            .color('#EEEEEE')
+            .width('80%')
+
+          // 我的优惠
+          Column() {
+            this.CouponIcon()
+            Text('我的優惠')
+              .fontSize(12)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ top: 4 })
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            this.goToCoupons();
+          })
+        }
+        .layoutWeight(1)
+        .height('100%')
+
+        // 分隔线
+        Divider()
+          .vertical(true)
+          .height('70%')
+          .color('#EEEEEE')
+
+        // 右侧自取按钮
         Column() {
           this.PickupIcon()
           Text('自取')
@@ -708,57 +759,90 @@ struct Index {
             .margin({ top: 12 })
         }
         .layoutWeight(1)
-        .aspectRatio(1)
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(12)
+        .height('100%')
         .justifyContent(FlexAlign.Center)
-        .shadow({
-          radius: 4,
-          color: 'rgba(0, 0, 0, 0.08)',
-          offsetX: 0,
-          offsetY: 2
-        })
         .opacity(this.isOpen ? 1 : 0.7)
         .onClick(() => {
           this.selectOrderType(OrderType.PICKUP);
         })
       }
-
-      // 间距
-      if (this.hasTakeout && this.hasDineIn) {
-        Blank()
-          .width(12)
-      }
-
-      // 堂食卡片
-      if (this.hasDineIn) {
-        Column() {
-          this.DineInIcon()
-          Text('堂食')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-            .margin({ top: 12 })
+      .width('92%')
+      .height(140)
+      .backgroundColor($r('app.color.card_background'))
+      .borderRadius(12)
+      .margin({ top: 16 })
+      .shadow({
+        radius: 4,
+        color: 'rgba(0, 0, 0, 0.08)',
+        offsetX: 0,
+        offsetY: 2
+      })
+    } else {
+      // 常规布局：自取和堂食并排
+      Row() {
+        // 自取卡片
+        if (this.hasTakeout) {
+          Column() {
+            this.PickupIcon()
+            Text('自取')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ top: 12 })
+          }
+          .layoutWeight(1)
+          .aspectRatio(1)
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .shadow({
+            radius: 4,
+            color: 'rgba(0, 0, 0, 0.08)',
+            offsetX: 0,
+            offsetY: 2
+          })
+          .opacity(this.isOpen ? 1 : 0.7)
+          .onClick(() => {
+            this.selectOrderType(OrderType.PICKUP);
+          })
         }
-        .layoutWeight(1)
-        .aspectRatio(1)
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(12)
-        .justifyContent(FlexAlign.Center)
-        .shadow({
-          radius: 4,
-          color: 'rgba(0, 0, 0, 0.08)',
-          offsetX: 0,
-          offsetY: 2
-        })
-        .opacity(this.isOpen ? 1 : 0.7)
-        .onClick(() => {
-          this.selectOrderType(OrderType.DINE_IN);
-        })
+
+        // 间距
+        if (this.hasTakeout && this.hasDineIn) {
+          Blank()
+            .width(12)
+        }
+
+        // 堂食卡片
+        if (this.hasDineIn) {
+          Column() {
+            this.DineInIcon()
+            Text('堂食')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ top: 12 })
+          }
+          .layoutWeight(1)
+          .aspectRatio(1)
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .shadow({
+            radius: 4,
+            color: 'rgba(0, 0, 0, 0.08)',
+            offsetX: 0,
+            offsetY: 2
+          })
+          .opacity(this.isOpen ? 1 : 0.7)
+          .onClick(() => {
+            this.selectOrderType(OrderType.DINE_IN);
+          })
+        }
       }
+      .width('92%')
+      .margin({ top: 16 })
     }
-    .width('92%')
-    .margin({ top: 16 })
   }
 
   // 自取图标 - 使用图片
@@ -1687,6 +1771,16 @@ struct Index {
     // 货币符号
     if (data.currency?.symbol_left) {
       this.currencySymbol = data.currency.symbol_left;
+    }
+
+    // 连锁门店信息
+    if (data.scheme_stores && data.scheme_stores.scheme_id) {
+      this.hasMultipleStores = true;
+      this.schemeId = data.scheme_stores.scheme_id;
+      this.storeList = data.scheme_stores.stores || [];
+      this.selectedStoreId = parseInt(ApiConfig.DEFAULT_STORE_ID);
+      hilog.info(DOMAIN, TAG, 'Scheme stores loaded from home: scheme_id=%{public}s, stores=%{public}d',
+        this.schemeId, this.storeList.length);
     }
   }
 

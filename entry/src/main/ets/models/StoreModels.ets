@@ -128,6 +128,7 @@ export interface HomeData {
   current_schedule: BusinessSchedule | null;
   table_count: string;
   rank_list?: RankProduct[];  // 热卖推荐列表
+  scheme_stores?: SchemeStoresData;  // 连锁门店信息
 }
 
 /**
