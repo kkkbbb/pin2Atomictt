@@ -1027,9 +1027,10 @@ struct MenuPage {
     return order.date_added || order.created_at || '';
   }
 
-  // 获取订单金额
+  // 获取订单金额（格式化为整数）
   private getOrderPayAmount(order: Order): string {
-    return order.total || order.pay_amount || '0';
+    const amount = order.total || order.pay_amount || '0';
+    return parseFloat(amount).toFixed(0);
   }
 
   // 判断是否待支付
@@ -2567,13 +2568,16 @@ struct MenuPage {
   }
 
   /**
-   * 获取产品价格
+   * 获取产品价格（格式化为整数）
    */
   private getPrice(product: Product): string {
+    let price: string;
     if (this.orderType === OrderType.PICKUP) {
-      return product.takeout_price || product.price;
+      price = product.takeout_price || product.price;
+    } else {
+      price = product.price;
     }
-    return product.price;
+    return parseFloat(price).toFixed(0);
   }
 
   /**

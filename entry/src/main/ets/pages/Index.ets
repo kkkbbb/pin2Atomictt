@@ -2,7 +2,7 @@ import { authentication } from '@kit.AccountKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { apiService, ApiConfig } from '../services/ApiService';
-import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan } from '../models/StoreModels';
+import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan, SchemeStore } from '../models/StoreModels';
 import { router, window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
@@ -43,8 +43,20 @@ struct Index {
   @State memberPlan: MemberPlan | null = null;
   // 货币符号
   @State currencySymbol: string = '$';
+  // 是否有多门店（显示门店选择卡片）
+  @State hasMultipleStores: boolean = false;
+  // 是否有登录方式（显示登录卡片）
+  @State hasLoginMethods: boolean = false;
   // 骨架屏动画透明度
   @State skeletonOpacity: number = 0.3;
+  // 门店选择弹窗
+  @State showStoreSelectPanel: boolean = false;
+  // 门店列表
+  @State storeList: SchemeStore[] = [];
+  // 当前选中的门店ID
+  @State selectedStoreId: number = 0;
+  // scheme_id（连锁品牌ID）
+  private schemeId: string = '';
 
   // 店铺完整数据
   private homeData: HomeData | null = null;
@@ -62,21 +74,25 @@ struct Index {
           // 下方内容区域 - 使用Scroll支持滚动
           Scroll() {
             Column() {
-              // 登录卡片区域
-              this.LoginCard()
+              // 登录卡片区域 - 仅当商家配置了登录方式时显示
+              if (this.hasLoginMethods) {
+                this.LoginCard()
+              }
 
               // 服务选择区域
               this.ServiceSection()
 
-              // 会员印花卡片 - 在自取/堂食下面
-              if (this.memberPlan && this.memberPlan.open_registration === 1) {
+              // 会员印花卡片 - 仅当会员计划激活且开放注册时显示
+              if (this.memberPlan && this.memberPlan.status === '1' && this.memberPlan.open_registration === 1) {
                 this.MemberStampCard()
               }
 
-              // 门店选择卡片
-              this.StoreSelectCard()
+              // 门店选择卡片 - 仅当有多门店时显示
+              if (this.hasMultipleStores) {
+                this.StoreSelectCard()
+              }
 
-              // 热卖推荐
+              // 热卖推荐 - 仅当有推荐商品时显示
               if (this.rankList.length > 0) {
                 this.HotProductsSection()
               }
@@ -130,6 +146,22 @@ struct Index {
       // 登录面板
       if (this.showLoginPanel) {
         this.LoginPanel()
+      }
+
+      // 门店选择弹窗遮罩层
+      if (this.showStoreSelectPanel) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick(() => {
+            this.closeStoreSelectPanel();
+          })
+      }
+
+      // 门店选择弹窗
+      if (this.showStoreSelectPanel) {
+        this.StoreSelectPanel()
       }
     }
     .width('100%')
@@ -348,26 +380,32 @@ struct Index {
   StoreHeader() {
     // 背景层 + 内容层
     Stack() {
-      // 背景层 - 根据营业状态显示不同背景色
-      // 营业中：使用主题色（黄色），休息中：使用灰色
+      // 背景层 - 加载中使用浅灰色，加载完成后根据营业状态显示
       Column() {
-        if (this.storeImage) {
+        if (!this.isLoading && this.storeImage) {
           Image(this.storeImage)
             .width('100%')
             .height('100%')
             .objectFit(ImageFit.Cover)
             .blur(20)
-            .opacity(0.19) // H5 风格：图片几乎透明，让背景色显示
+            .opacity(0.19)
         }
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(this.isOpen ? this.themeColor : '#DBD7D8')
+      .backgroundColor(this.isLoading ? '#F0F0F0' : (this.isOpen ? this.themeColor : '#DBD7D8'))
 
       // 内容层 - 通过固定 margin-top 避开状态栏和胶囊
       Row() {
-        // 店铺图片
-        if (this.storeImage) {
+        // 店铺图片 - 加载中显示骨架屏
+        if (this.isLoading) {
+          Column()
+            .width(80)
+            .height(80)
+            .borderRadius(6)
+            .backgroundColor('#E0E0E0')
+            .opacity(this.skeletonOpacity)
+        } else if (this.storeImage) {
           Image(this.storeImage)
             .width(80)
             .height(80)
@@ -387,60 +425,89 @@ struct Index {
             .objectFit(ImageFit.Cover)
         }
 
-        // 店铺信息
-        Column() {
-          // 店铺名称
-          Text(this.storeName)
-            .fontSize(22)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary'))
-
-          // 状态标签行
-          Row() {
-            // 商家状态标签
-            if (this.storeStatus) {
-              Text(this.storeStatus)
-                .fontSize(11)
-                .fontColor($r('app.color.text_secondary'))
-                .backgroundColor('rgba(255, 255, 255, 0.9)')
-                .borderRadius(4)
-                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-            }
-
-            // 今日状态标签
-            if (this.todayStatus) {
-              Text(this.todayStatus)
-                .fontSize(11)
-                .fontColor($r('app.color.text_secondary'))
-                .backgroundColor('rgba(255, 255, 255, 0.9)')
-                .borderRadius(4)
-                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-                .margin({ left: 6 })
-            }
-
-            // 关于商户按钮
+        // 店铺信息 - 加载中显示骨架屏
+        if (this.isLoading) {
+          Column() {
+            Column()
+              .width(140)
+              .height(22)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
             Row() {
-              Text('關於商戶')
-                .fontSize(11)
-                .fontColor($r('app.color.text_secondary'))
-              Text('\u24D8')
-                .fontSize(11)
-                .fontColor($r('app.color.text_secondary'))
-                .margin({ left: 2 })
+              Column()
+                .width(50)
+                .height(18)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+              Column()
+                .width(60)
+                .height(18)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+                .margin({ left: 8 })
             }
-            .backgroundColor('rgba(255, 255, 255, 0.95)')
-            .borderRadius(4)
-            .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-            .border({ width: 1, color: '#E0E0E0' })
-            .margin({ left: 6 })
-            .onClick(() => {
-              this.showStoreInfo();
-            })
+            .margin({ top: 8 })
           }
-          .margin({ top: 8 })
+          .alignItems(HorizontalAlign.Start)
+          .margin({ left: 12 })
+        } else {
+          Column() {
+            // 店铺名称
+            Text(this.storeName)
+              .fontSize(22)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary'))
+
+            // 状态标签行
+            Row() {
+              // 商家状态标签
+              if (this.storeStatus) {
+                Text(this.storeStatus)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor('rgba(255, 255, 255, 0.9)')
+                  .borderRadius(4)
+                  .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+              }
+
+              // 今日状态标签
+              if (this.todayStatus) {
+                Text(this.todayStatus)
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .backgroundColor('rgba(255, 255, 255, 0.9)')
+                  .borderRadius(4)
+                  .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+                  .margin({ left: 6 })
+              }
+
+              // 关于商户按钮
+              Row() {
+                Text('關於商戶')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                Text('\u24D8')
+                  .fontSize(11)
+                  .fontColor($r('app.color.text_secondary'))
+                  .margin({ left: 2 })
+              }
+              .backgroundColor('rgba(255, 255, 255, 0.95)')
+              .borderRadius(4)
+              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+              .border({ width: 1, color: '#E0E0E0' })
+              .margin({ left: 6 })
+              .onClick(() => {
+                this.showStoreInfo();
+              })
+            }
+            .margin({ top: 8 })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .margin({ left: 12 })
         }
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: 12 })
       }
       .width('100%')
       .alignItems(VerticalAlign.Top)
@@ -831,8 +898,7 @@ struct Index {
           .borderRadius(16)
           .height(32)
           .onClick(() => {
-            // TODO: 跳转到门店选择页面
-            hilog.info(DOMAIN, TAG, 'Select other store');
+            this.openStoreSelectPanel();
           })
       }
       .width('100%')
@@ -952,7 +1018,7 @@ struct Index {
           .fontSize(10)
           .fontColor($r('app.color.text_primary'))
           .margin({ top: 2 })
-        Text(item.product_detail?.takeout_price || item.product_detail?.price || '0')
+        Text(parseFloat(item.product_detail?.takeout_price || item.product_detail?.price || '0').toFixed(0))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
@@ -1281,6 +1347,126 @@ struct Index {
     .padding({ left: 20, right: 20, bottom: 40 })
   }
 
+  // 门店选择弹窗
+  @Builder
+  StoreSelectPanel() {
+    Column() {
+      // 顶部拖拽指示条
+      Column()
+        .width(40)
+        .height(4)
+        .backgroundColor('#E0E0E0')
+        .borderRadius(2)
+        .margin({ top: 12, bottom: 16 })
+
+      // 标题栏
+      Row() {
+        // 关闭按钮
+        Text('✕')
+          .fontSize(20)
+          .fontColor($r('app.color.text_secondary'))
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .onClick(() => {
+            this.closeStoreSelectPanel();
+          })
+
+        Text('選擇門店')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+
+        // 占位，保持标题居中
+        Column()
+          .width(24)
+          .height(24)
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16 })
+
+      // 分隔线
+      Divider()
+        .color('#F0F0F0')
+        .width('100%')
+        .margin({ top: 16 })
+
+      // 门店列表
+      Scroll() {
+        Column() {
+          ForEach(this.storeList, (store: SchemeStore) => {
+            this.StoreListItem(store)
+          }, (store: SchemeStore) => store.store_id.toString())
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+    }
+    .width('100%')
+    .height('50%')
+    .backgroundColor('#FFFFFF')
+    .borderRadius({ topLeft: 16, topRight: 16 })
+    .transition(
+      TransitionEffect.translate({ y: 500 })
+        .animation({ duration: 300, curve: Curve.EaseOut })
+    )
+  }
+
+  // 门店列表项
+  @Builder
+  StoreListItem(store: SchemeStore) {
+    Row() {
+      // 门店图标
+      Image($r('app.media.icon_store_select'))
+        .width(32)
+        .height(32)
+        .objectFit(ImageFit.Contain)
+
+      // 门店信息
+      Column() {
+        Text(store.local_name || store.name)
+          .fontSize(16)
+          .fontWeight(500)
+          .fontColor($r('app.color.text_primary'))
+
+        Text(store.address)
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: 4 })
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      .margin({ left: 12 })
+
+      // 选中指示器
+      if (store.store_id === this.selectedStoreId) {
+        Column()
+          .width(20)
+          .height(20)
+          .backgroundColor(this.themeColor)
+          .borderRadius(10)
+      } else {
+        Column()
+          .width(20)
+          .height(20)
+          .border({ width: 2, color: '#E0E0E0' })
+          .borderRadius(10)
+      }
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+    .backgroundColor(store.store_id === this.selectedStoreId ? '#FFF9E6' : '#FFFFFF')
+    .onClick(() => {
+      this.selectStore(store);
+    })
+  }
+
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'Store home page loading...');
     this.getTopAvoidHeight();
@@ -1343,12 +1529,95 @@ struct Index {
       const memberResponse = await apiService.getMemberPlan();
       if (memberResponse.code === 200 && memberResponse.data?.member_plan) {
         this.memberPlan = memberResponse.data.member_plan;
+        // 判断是否有多门店：如果 member_plan.store_id === "0"，说明是连锁店（计划适用于所有门店）
+        // scheme_id 存在且 store_id 为 "0" 表示这是连锁品牌的会员计划
+        if (this.memberPlan.scheme_id && this.memberPlan.store_id === '0') {
+          this.hasMultipleStores = true;
+          this.schemeId = this.memberPlan.scheme_id;
+          hilog.info(DOMAIN, TAG, 'Multiple stores detected: scheme_id=%{public}s', this.memberPlan.scheme_id);
+        }
         hilog.info(DOMAIN, TAG, 'Member plan loaded: %{public}s, open_registration=%{public}d',
           this.memberPlan.title, this.memberPlan.open_registration);
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Error loading member plan: %{public}s', JSON.stringify(error));
     }
+  }
+
+  /**
+   * 加载连锁门店列表
+   */
+  private async loadSchemeStores(): Promise<void> {
+    if (!this.schemeId) {
+      hilog.warn(DOMAIN, TAG, 'No scheme_id available');
+      return;
+    }
+
+    try {
+      const response = await apiService.getSchemeStores(this.schemeId);
+      if (response.code === 200 && response.data?.stores) {
+        this.storeList = response.data.stores;
+        // 设置当前选中的门店
+        this.selectedStoreId = parseInt(ApiConfig.DEFAULT_STORE_ID);
+        hilog.info(DOMAIN, TAG, 'Scheme stores loaded: %{public}d stores', this.storeList.length);
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Error loading scheme stores: %{public}s', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 打开门店选择弹窗
+   */
+  private openStoreSelectPanel(): void {
+    // 加载门店列表
+    this.loadSchemeStores();
+
+    animateTo({
+      duration: 300,
+      curve: Curve.EaseOut
+    }, () => {
+      this.showStoreSelectPanel = true;
+    });
+  }
+
+  /**
+   * 关闭门店选择弹窗
+   */
+  private closeStoreSelectPanel(): void {
+    animateTo({
+      duration: 200,
+      curve: Curve.EaseIn
+    }, () => {
+      this.showStoreSelectPanel = false;
+    });
+  }
+
+  /**
+   * 选择门店
+   */
+  private selectStore(store: SchemeStore): void {
+    if (store.store_id === this.selectedStoreId) {
+      // 已选中，直接关闭
+      this.closeStoreSelectPanel();
+      return;
+    }
+
+    hilog.info(DOMAIN, TAG, 'Switching to store: %{public}d - %{public}s',
+      store.store_id, store.local_name || store.name);
+
+    // 更新选中状态
+    this.selectedStoreId = store.store_id;
+
+    // 关闭弹窗
+    this.closeStoreSelectPanel();
+
+    // 切换门店：重新设置 store_id 并刷新数据
+    this.isLoading = true;
+    apiService.setStoreId(store.store_id.toString());
+
+    // 重新加载首页数据
+    this.loadStoreData();
   }
 
   /**
@@ -1394,9 +1663,16 @@ struct Index {
         facebook_register: config.login.facebook_register || 0,
         email_register: config.login.email_register || 0
       };
-      hilog.info(DOMAIN, TAG, 'Login config loaded: email=%{public}d, google=%{public}d, facebook=%{public}d, phone=%{public}d',
+      // 判断是否有任意登录方式启用
+      this.hasLoginMethods = (
+        this.loginConfig.telephone_login === 1 ||
+        this.loginConfig.google_register === 1 ||
+        this.loginConfig.facebook_register === 1 ||
+        this.loginConfig.email_register === 1
+      );
+      hilog.info(DOMAIN, TAG, 'Login config loaded: email=%{public}d, google=%{public}d, facebook=%{public}d, phone=%{public}d, hasLoginMethods=%{public}s',
         this.loginConfig.email_register, this.loginConfig.google_register,
-        this.loginConfig.facebook_register, this.loginConfig.telephone_login);
+        this.loginConfig.facebook_register, this.loginConfig.telephone_login, this.hasLoginMethods ? 'true' : 'false');
     }
 
     // 门店地址

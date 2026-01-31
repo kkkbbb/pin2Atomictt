@@ -14,7 +14,8 @@ import {
   AddOrderResponse,
   OrderDetailData,
   PayOrderParams,
-  PayOrderData
+  PayOrderData,
+  SchemeStoresData
 } from '../models/StoreModels';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { buffer } from '@kit.ArkTS';
@@ -564,6 +565,42 @@ export class ApiService {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
       hilog.error(DOMAIN, TAG, 'Pay order error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
+    }
+  }
+
+  /**
+   * 获取连锁门店列表
+   * GET /api/store/scheme-stores
+   * @param schemeId 连锁品牌ID（从 member_plan.scheme_id 获取）
+   */
+  async getSchemeStores(schemeId: string): Promise<ApiResponse<SchemeStoresData>> {
+    const httpRequest = this.createHttpRequest();
+    const url = `${ApiConfig.BASE_URL}/api/store/scheme-stores?scheme_id=${schemeId}&store_id=${this.storeId}`;
+
+    hilog.info(DOMAIN, TAG, 'Get scheme stores: scheme_id=%{public}s', schemeId);
+
+    try {
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: this.getHeaders(),
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      httpRequest.destroy();
+
+      if (response.responseCode === 200) {
+        const result = JSON.parse(response.result as string) as ApiResponse<SchemeStoresData>;
+        hilog.info(DOMAIN, TAG, 'Scheme stores success: count=%{public}d',
+          result.data?.stores?.length || 0);
+        return result;
+      } else {
+        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'Scheme stores error: %{public}s', errorMsg);
       throw new ApiError(errorMsg);
     }
   }

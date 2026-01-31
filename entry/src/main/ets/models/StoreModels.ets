@@ -968,3 +968,31 @@ export interface PayOrderData {
   form?: string;     // 表单脚本
   params?: string;   // 支付参数
 }
+
+// ==================== 门店选择相关模型 ====================
+
+/**
+ * 连锁门店信息
+ */
+export interface SchemeStore {
+  store_id: number;
+  name: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  address: string;
+  cn_address: string;
+  en_address: string;
+  coordinate: string;
+}
+
+/**
+ * 连锁门店列表响应
+ */
+export interface SchemeStoresData {
+  scheme_id: string;
+  scheme_name: string;
+  is_scheme_menu: string;
+  flagship: string;
+  stores: SchemeStore[];
+}

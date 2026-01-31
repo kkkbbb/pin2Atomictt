@@ -704,7 +704,7 @@ struct CheckoutPage {
           .fontSize(14)
           .fontColor('#333333')
         Blank()
-        Text(`${this.currencySymbol}${this.boxFee}`)
+        Text(`${this.currencySymbol}${this.boxFee.toFixed(0)}`)
           .fontSize(14)
           .fontColor('#333333')
       }
@@ -719,7 +719,7 @@ struct CheckoutPage {
           .fontSize(14)
           .fontColor('#333333')
         Blank()
-        Text(this.voucherDiscount > 0 ? `-${this.currencySymbol}${this.voucherDiscount}` : '無可用兌換券')
+        Text(this.voucherDiscount > 0 ? `-${this.currencySymbol}${this.voucherDiscount.toFixed(0)}` : '無可用兌換券')
           .fontSize(14)
           .fontColor(this.voucherDiscount > 0 ? '#333333' : '#999999')
           .fontWeight(this.voucherDiscount > 0 ? FontWeight.Medium : FontWeight.Normal)
@@ -747,7 +747,7 @@ struct CheckoutPage {
 
         Blank()
 
-        Text(this.couponDiscount > 0 ? `-${this.currencySymbol}${this.couponDiscount}` : '無可用優惠券')
+        Text(this.couponDiscount > 0 ? `-${this.currencySymbol}${this.couponDiscount.toFixed(0)}` : '無可用優惠券')
           .fontSize(14)
           .fontColor(this.couponDiscount > 0 ? '#333333' : '#999999')
           .fontWeight(this.couponDiscount > 0 ? FontWeight.Medium : FontWeight.Normal)

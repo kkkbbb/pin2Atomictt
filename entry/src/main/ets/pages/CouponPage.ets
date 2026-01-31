@@ -249,7 +249,7 @@ struct CouponPage {
       Column() {
         if (coupon.discount_type === 'percentage') {
           Row() {
-            Text(coupon.discount_value)
+            Text(parseFloat(coupon.discount_value || '0').toFixed(0))
               .fontSize(32)
               .fontWeight(FontWeight.Bold)
               .fontColor(Color.White)
@@ -267,7 +267,7 @@ struct CouponPage {
               .fontSize(14)
               .fontColor(Color.White)
               .margin({ top: 4 })
-            Text(coupon.discount_value)
+            Text(parseFloat(coupon.discount_value || '0').toFixed(0))
               .fontSize(32)
               .fontWeight(FontWeight.Bold)
               .fontColor(Color.White)
@@ -316,7 +316,7 @@ struct CouponPage {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
         if (coupon.min_order_amount) {
-          Text(`滿$${coupon.min_order_amount}可用`)
+          Text(`滿$${parseFloat(coupon.min_order_amount).toFixed(0)}可用`)
             .fontSize(12)
             .fontColor($r('app.color.text_hint'))
             .margin({ top: 4 })
