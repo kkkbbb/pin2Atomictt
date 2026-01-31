@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router, window, promptAction } from '@kit.ArkUI';
-import { appState, CartItem } from '../services/AppStorage';
+import { appState, CartItem, CartBoxInfo } from '../services/AppStorage';
 import { apiService } from '../services/ApiService';
 import {
   OrderType,
@@ -43,7 +43,8 @@ struct CheckoutPage {
   @State cartCount: number = 0;
 
   // 费用明细
-  @State boxFee: number = 2;         // 餐盒费
+  @State boxFee: number = 0;         // 餐盒费（从购物车商品获取，0表示无餐盒费）
+  @State boxInfo: CartBoxInfo | null = null;  // 餐盒费详情
   @State voucherDiscount: number = 0; // 兑换券折扣
   @State couponDiscount: number = 0;  // 优惠券折扣
 
@@ -108,11 +109,18 @@ struct CheckoutPage {
     this.cartTotal = appState.cartTotal;
     this.cartCount = appState.cartCount;
 
-    // 计算餐盒费（外卖自取时收取）
+    // 计算餐盒费（外卖自取时收取，且需要商家配置了餐盒费）
+    this.boxFee = 0;
+    this.boxInfo = null;
     if (this.orderType === OrderType.PICKUP) {
-      this.boxFee = 2;
-    } else {
-      this.boxFee = 0;
+      // 从购物车中找到第一个有餐盒费配置的商品
+      for (const item of this.cartItems) {
+        if (item.boxInfo && item.boxInfo.price > 0) {
+          this.boxInfo = item.boxInfo;
+          this.boxFee = item.boxInfo.price;
+          break;
+        }
+      }
     }
 
     // 如果店铺信息为空，从API获取
@@ -441,8 +449,8 @@ struct CheckoutPage {
       }
 
       // 构建订单商品
-      // 只为第一个商品添加盒费，避免重复计费
-      const boxInfo = (this.orderType === OrderType.PICKUP && isFirstItem)
+      // 只为第一个商品添加盒费，避免重复计费（需要商家配置了餐盒费）
+      const boxInfo = (this.orderType === OrderType.PICKUP && isFirstItem && this.boxInfo)
         ? this.buildBoxInfo(cartItem)
         : null;
 
@@ -472,28 +480,29 @@ struct CheckoutPage {
    * 构建外卖盒信息
    */
   private buildBoxInfo(cartItem: CartItem): OrderBoxInfo | null {
-    // 外卖自取时添加餐盒费
-    if (this.orderType === OrderType.PICKUP) {
-      const boxInfo: OrderBoxInfo = {
+    // 外卖自取时添加餐盒费（需要有餐盒费配置）
+    if (this.orderType === OrderType.PICKUP && this.boxInfo) {
+      const priceStr = this.boxInfo.price.toFixed(4);
+      const orderBoxInfo: OrderBoxInfo = {
         id: '',
         product_id: cartItem.productId,
-        box_id: '167',
+        box_id: this.boxInfo.boxId,
         box: {
-          box_id: '167',
+          box_id: this.boxInfo.boxId,
           store_id: AppConfig.DEFAULT_STORE_ID,
-          local_name: '外賣盒$2',
-          en_name: 'Box $2',
+          local_name: this.boxInfo.localName,
+          en_name: this.boxInfo.enName,
           cn_name: '',
-          price: '2.0000'
+          price: priceStr
         },
         store_id: AppConfig.DEFAULT_STORE_ID,
-        local_name: '外賣盒$2',
-        en_name: 'Box $2',
+        local_name: this.boxInfo.localName,
+        en_name: this.boxInfo.enName,
         cn_name: '',
-        price: '2.0000',
+        price: priceStr,
         display_order: '0'
       };
-      return boxInfo;
+      return orderBoxInfo;
     }
     return null;
   }
@@ -698,20 +707,22 @@ struct CheckoutPage {
   @Builder
   FeeDetailSection() {
     Column() {
-      // 餐盒费
-      Row() {
-        Text('餐盒費')
-          .fontSize(14)
-          .fontColor('#333333')
-        Blank()
-        Text(`${this.currencySymbol}${this.boxFee.toFixed(0)}`)
-          .fontSize(14)
-          .fontColor('#333333')
-      }
-      .width('100%')
-      .padding({ top: 14, bottom: 14 })
+      // 餐盒费（只有当商家配置了餐盒费时才显示）
+      if (this.boxFee > 0) {
+        Row() {
+          Text('餐盒費')
+            .fontSize(14)
+            .fontColor('#333333')
+          Blank()
+          Text(`${this.currencySymbol}${this.boxFee.toFixed(0)}`)
+            .fontSize(14)
+            .fontColor('#333333')
+        }
+        .width('100%')
+        .padding({ top: 14, bottom: 14 })
 
-      Divider().color('#F5F5F5').strokeWidth(1)
+        Divider().color('#F5F5F5').strokeWidth(1)
+      }
 
       // 兑换券
       Row() {

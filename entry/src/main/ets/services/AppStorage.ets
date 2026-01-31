@@ -23,6 +23,16 @@ export interface CartPackageItem {
 }
 
 /**
+ * 购物车项 - 餐盒费信息
+ */
+export interface CartBoxInfo {
+  boxId: string;
+  localName: string;
+  enName: string;
+  price: number;
+}
+
+/**
  * 购物车项 - 加送商品选择
  */
 export interface CartPolicySelection {
@@ -97,6 +107,9 @@ export interface CartItemInput {
 
   // 规格描述（用于显示 "奶茶·熱·標準·標準"）
   specDescription: string;
+
+  // 餐盒费信息（从商品详情的box字段获取，可能为空）
+  boxInfo?: CartBoxInfo;
 }
 
 /**
@@ -132,6 +145,9 @@ export interface CartItem {
 
   // 唯一标识（用于区分相同商品不同配料的项）
   cartItemId: string;
+
+  // 餐盒费信息（从商品详情的box字段获取，可能为空）
+  boxInfo?: CartBoxInfo;
 }
 
 /**
@@ -342,7 +358,8 @@ export class AppStateManager {
         quantity: cartItem.quantity,
         unitPrice: cartItem.unitPrice,
         specDescription: cartItem.specDescription,
-        cartItemId: cartItemId
+        cartItemId: cartItemId,
+        boxInfo: cartItem.boxInfo
       };
       this._cartItems.push(newItem);
     }

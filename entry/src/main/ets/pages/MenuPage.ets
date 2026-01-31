@@ -10,7 +10,8 @@ import {
   CartPolicySelection,
   CartPolicyItem,
   CartCondiment,
-  CartPolicyPrice
+  CartPolicyPrice,
+  CartBoxInfo
 } from '../services/AppStorage';
 import {
   ProductGroup,
@@ -3222,6 +3223,18 @@ struct MenuPage {
     // 生成规格描述
     const specDescription = this.buildSpecDescription(packageSelections, policySelections);
 
+    // 获取餐盒费信息（从商品详情的box字段）
+    let boxInfo: CartBoxInfo | undefined = undefined;
+    if (this.selectedProduct.box && this.selectedProduct.box.box) {
+      const box = this.selectedProduct.box.box;
+      boxInfo = {
+        boxId: box.box_id,
+        localName: box.local_name,
+        enName: box.en_name,
+        price: parseFloat(box.price || '0')
+      };
+    }
+
     const cartItem: CartItemInput = {
       productId: productId,
       productName: productName,
@@ -3235,7 +3248,8 @@ struct MenuPage {
       policySelections: policySelections,
       quantity: this.quantity,
       unitPrice: unitPrice,
-      specDescription: specDescription
+      specDescription: specDescription,
+      boxInfo: boxInfo
     };
     return cartItem;
   }
