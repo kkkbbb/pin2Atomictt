@@ -9,7 +9,12 @@ import {
   OrderListData,
   CouponListData,
   ProductDetail,
-  PolicyGroupData
+  PolicyGroupData,
+  AddOrderRequest,
+  AddOrderResponse,
+  OrderDetailData,
+  PayOrderParams,
+  PayOrderData
 } from '../models/StoreModels';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { buffer } from '@kit.ArkTS';
@@ -51,7 +56,7 @@ class RequestParams {
   page_number?: string;    // 页码
   page_limit?: string;     // 每页数量
   product_id?: string;     // 产品ID
-  order_type?: string;     // 订单类型: 1=自取, 2=堂食
+  order_type?: string;     // 订单类型: 1=堂食, 2=外卖自取
   ts?: string;             // 时间戳
   sign?: string;           // 签名
 }
@@ -398,7 +403,7 @@ export class ApiService {
   /**
    * 获取用户订单列表
    * GET /api/order/order-list-app
-   * @param filterType 筛选类型: '' | 'in_progress' | 'completed' | 'refund'
+   * @param filterType 筛选类型: '' (全部) | '11' (進行中) | '12' (已完成) | '13' (退款/取消)
    * @param pageNumber 页码（从1开始）
    * @param pageLimit 每页数量
    */
@@ -428,9 +433,9 @@ export class ApiService {
    * 获取产品详情
    * GET /api/product/detail
    * @param productId 产品ID
-   * @param orderType 订单类型: 1=自取, 2=堂食
+   * @param orderType 订单类型: 1=堂食, 2=外卖自取
    */
-  async getProductDetail(productId: string, orderType: number = 1): Promise<ApiResponse<ProductDetail>> {
+  async getProductDetail(productId: string, orderType: number = 2): Promise<ApiResponse<ProductDetail>> {
     const params = new RequestParams();
     params.product_id = productId;
     params.order_type = orderType.toString();
@@ -477,6 +482,88 @@ export class ApiService {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
       hilog.error(DOMAIN, TAG, 'Policy error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
+    }
+  }
+
+  /**
+   * 提交订单
+   * POST /api/order/add-order
+   */
+  async addOrder(orderData: AddOrderRequest): Promise<ApiResponse<AddOrderResponse>> {
+    hilog.info(DOMAIN, TAG, 'Submitting order: products=%{public}d, total=%{public}s',
+      orderData.products.length, orderData.total);
+    return this.post<AddOrderResponse>('/api/order/add-order', orderData);
+  }
+
+  /**
+   * 获取订单详情
+   * GET /api/order/detail
+   * @param orderId 订单ID
+   */
+  async getOrderDetail(orderId: string): Promise<ApiResponse<OrderDetailData>> {
+    const httpRequest = this.createHttpRequest();
+    const url = `${ApiConfig.BASE_URL}/api/order/detail?order_id=${orderId}`;
+
+    hilog.info(DOMAIN, TAG, 'GET order detail: %{public}s', url);
+
+    try {
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: this.getHeaders(),
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      httpRequest.destroy();
+
+      if (response.responseCode === 200) {
+        const result = JSON.parse(response.result as string) as ApiResponse<OrderDetailData>;
+        hilog.info(DOMAIN, TAG, 'Order detail success: order_id=%{public}s, status=%{public}s',
+          result.data?.order_id, result.data?.status?.customer_name);
+        return result;
+      } else {
+        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'Order detail error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
+    }
+  }
+
+  /**
+   * 支付订单
+   * GET /api/payment/pay-order
+   * @param params 支付参数
+   */
+  async payOrder(params: PayOrderParams): Promise<ApiResponse<PayOrderData>> {
+    const httpRequest = this.createHttpRequest();
+    const url = `${ApiConfig.BASE_URL}/api/payment/pay-order?order_id=${params.order_id}&total=${params.total}&pay_channel=${params.pay_channel}&pay_method=${params.pay_method}&pay_type=${params.pay_type}`;
+
+    hilog.info(DOMAIN, TAG, 'Pay order request: order_id=%{public}d, total=%{public}s, pay_type=%{public}s',
+      params.order_id, params.total, params.pay_type);
+
+    try {
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: this.getHeaders(),
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      httpRequest.destroy();
+
+      if (response.responseCode === 200) {
+        const result = JSON.parse(response.result as string) as ApiResponse<PayOrderData>;
+        hilog.info(DOMAIN, TAG, 'Pay order success: url=%{public}s', result.data?.url || 'null');
+        return result;
+      } else {
+        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'Pay order error: %{public}s', errorMsg);
       throw new ApiError(errorMsg);
     }
   }

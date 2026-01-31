@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { router, window } from '@kit.ArkUI';
+import { router, window, promptAction } from '@kit.ArkUI';
 import { apiService } from '../services/ApiService';
 import {
   appState,
@@ -9,7 +9,8 @@ import {
   CartPackageItem,
   CartPolicySelection,
   CartPolicyItem,
-  CartCondiment
+  CartCondiment,
+  CartPolicyPrice
 } from '../services/AppStorage';
 import {
   ProductGroup,
@@ -48,6 +49,10 @@ interface CondimentSelection {
   itemId: string;
   itemName: string;
   price: number;
+  takeoutPrice: number;
+  deliveryPrice: number;
+  isDefault: string;
+  standardCode: string;
 }
 
 @Entry
@@ -67,6 +72,7 @@ struct MenuPage {
   // 店铺信息状态
   @State storeName: string = '';
   @State storeImage: string = '';
+  @State storeAddress: string = '';
   @State storeStatus: string = '';
   @State todayStatus: string = '';
   @State isOpen: boolean = true;
@@ -103,6 +109,8 @@ struct MenuPage {
   @State confirmedPolicySelections: Map<string, ConfirmedPolicySelection> = new Map();
   // 主商品配料选择（甜度、冰量等）: condimentGroupId -> condimentItemId
   @State selectedProductCondiments: Map<string, string> = new Map();
+  // 当前选中产品的分组ID（用于提交订单）
+  @State selectedProductGroupId: string = '';
 
   // 购物车状态
   @State cartCount: number = 0;                       // 购物车商品数量
@@ -179,7 +187,8 @@ struct MenuPage {
   @Builder
   StoreHeader() {
     Stack() {
-      // 背景层 - 店铺图片毛玻璃效果
+      // 背景层 - 根据营业状态显示不同背景色
+      // 营业中：使用主题色（黄色），休息中：使用灰色
       Column() {
         if (this.storeImage) {
           Image(this.storeImage)
@@ -187,12 +196,12 @@ struct MenuPage {
             .height('100%')
             .objectFit(ImageFit.Cover)
             .blur(20)
-            .opacity(0.6)
+            .opacity(0.19) // H5 风格：图片几乎透明，让背景色显示
         }
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#DBD7D8')
+      .backgroundColor(this.isOpen ? this.themeColor : '#DBD7D8')
 
       // 内容层
       Column() {
@@ -611,9 +620,9 @@ struct MenuPage {
         ForEach(group.products, (product: Product) => {
           ListItem() {
             if (this.currentShowType === '2') {
-              this.ProductItemLarge(product)
+              this.ProductItemLarge(product, group.group_id)
             } else {
-              this.ProductItemSmall(product)
+              this.ProductItemSmall(product, group.group_id)
             }
           }
         })
@@ -653,7 +662,7 @@ struct MenuPage {
 
   // 产品项 - 大图模式 (show_type = "2")
   @Builder
-  ProductItemLarge(product: Product) {
+  ProductItemLarge(product: Product, groupId: string) {
     Column() {
       // 产品图片（大图，宽度填满）
       if (product.cover_image) {
@@ -691,7 +700,7 @@ struct MenuPage {
             .border({ width: 1, color: '#E5E5E5' })
             .padding({ left: 14, right: 14, top: 6, bottom: 6 })
             .onClick(() => {
-              this.openProductDetail(product);
+              this.openProductDetail(product, groupId);
             })
         }
         .width('100%')
@@ -735,13 +744,13 @@ struct MenuPage {
     .borderRadius(8)
     .margin({ top: 8, left: 8, right: 8 })
     .onClick(() => {
-      this.openProductDetail(product);
+      this.openProductDetail(product, groupId);
     })
   }
 
   // 产品项 - 小图模式 (show_type = "1")
   @Builder
-  ProductItemSmall(product: Product) {
+  ProductItemSmall(product: Product, groupId: string) {
     Row() {
       // 产品图片（小图）
       if (product.cover_image) {
@@ -802,7 +811,7 @@ struct MenuPage {
         .border({ width: 1, color: '#E5E5E5' })
         .padding({ left: 12, right: 12, top: 5, bottom: 5 })
         .onClick(() => {
-          this.openProductDetail(product);
+          this.openProductDetail(product, groupId);
         })
     }
     .width('100%')
@@ -812,7 +821,7 @@ struct MenuPage {
     .margin({ top: 6, left: 8, right: 8 })
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
-      this.openProductDetail(product);
+      this.openProductDetail(product, groupId);
     })
   }
 
@@ -984,7 +993,7 @@ struct MenuPage {
     }
     .width('100%')
     .layoutWeight(1)
-    .padding({ top: 8, bottom: 8 })
+    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
     .onReachEnd(() => {
       if (this.hasMoreOrders && !this.isOrderLoading) {
         this.loadMoreOrders();
@@ -992,144 +1001,175 @@ struct MenuPage {
     })
   }
 
+  // 获取订单商品列表
+  private getOrderProducts(order: Order): OrderItem[] {
+    return order.order_product ?? order.items ?? [];
+  }
+
+  // 获取订单号
+  private getOrderNo(order: Order): string {
+    return order.wt_order_id || order.order_id;
+  }
+
+  // 获取订单状态文本
+  private getOrderStatusText(order: Order): string {
+    return order.status?.name || this.getStatusText(order.status_id || '');
+  }
+
+  // 判断是否外卖自取
+  private isPickupOrder(order: Order): boolean {
+    const orderTypeNum = typeof order.order_type === 'string' ? parseInt(order.order_type) : (order.order_type || 2);
+    return orderTypeNum === OrderType.PICKUP || order.dine_in_takeout === '2';
+  }
+
+  // 获取创建时间
+  private getOrderCreatedAt(order: Order): string {
+    return order.date_added || order.created_at || '';
+  }
+
+  // 获取订单金额
+  private getOrderPayAmount(order: Order): string {
+    return order.total || order.pay_amount || '0';
+  }
+
+  // 判断是否待支付
+  private isPendingPayment(order: Order): boolean {
+    return order.status_id === '2' ||
+      (order.status?.name?.includes('待支付') ?? false) ||
+      (order.status?.name?.includes('待付款') ?? false);
+  }
+
+  // 获取第一个商品名称
+  private getFirstProductName(order: Order): string {
+    const products = this.getOrderProducts(order);
+    if (products.length > 0) {
+      const item = products[0];
+      return item.product_local_name || item.local_name || item.product_name || '';
+    }
+    return '';
+  }
+
+  // 获取第一个商品图片
+  private getFirstProductImage(order: Order): string {
+    const products = this.getOrderProducts(order);
+    if (products.length > 0) {
+      return products[0].cover_image || '';
+    }
+    return '';
+  }
+
   // 订单卡片
   @Builder
   OrderCard(order: Order) {
     Column() {
-      // 顶部：订单号 + 状态
+      // 顶部：状态 + 箭头
       Row() {
-        Text(`訂單號: ${order.order_no}`)
-          .fontSize(13)
-          .fontColor('#666666')
-
-        Blank()
-
-        // 状态标签
-        Text(this.getStatusText(order.status))
-          .fontSize(12)
-          .fontColor(this.getStatusColor(order.status))
-          .backgroundColor(this.getStatusBgColor(order.status))
-          .borderRadius(4)
-          .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+        Text(this.getOrderStatusText(order))
+          .fontSize(15)
+          .fontColor('#999999')
+        Text(' >')
+          .fontSize(15)
+          .fontColor('#CCCCCC')
       }
       .width('100%')
-      .margin({ bottom: 12 })
+      .margin({ bottom: 8 })
 
-      // 订单类型 + 时间
+      // 订单类型（粗体）
+      Text(this.isPickupOrder(order) ? '外賣自取' : '堂食')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#333333')
+        .margin({ bottom: 12 })
+
+      // 分隔线
+      Divider()
+        .strokeWidth(0.5)
+        .color('#E5E5E5')
+        .margin({ bottom: 12 })
+
+      // 商品名称 + 数量提示
       Row() {
-        Text(order.order_type === 1 ? '外賣自取' : '堂食')
-          .fontSize(12)
-          .fontColor('#999999')
-
-        Text(' | ')
-          .fontSize(12)
-          .fontColor('#E5E5E5')
-
-        Text(order.created_at)
-          .fontSize(12)
-          .fontColor('#999999')
-      }
-      .margin({ bottom: 12 })
-
-      // 商品列表（最多显示3个）
-      ForEach(order.items.slice(0, 3), (item: OrderItem) => {
-        Row() {
-          // 商品图片
-          if (item.cover_image) {
-            Image(item.cover_image)
-              .width(50)
-              .height(50)
-              .borderRadius(4)
-              .objectFit(ImageFit.Cover)
-          } else {
-            Column()
-              .width(50)
-              .height(50)
-              .borderRadius(4)
-              .backgroundColor('#EEEEEE')
-          }
-
-          // 商品信息
-          Column() {
-            Text(item.local_name)
-              .fontSize(14)
-              .fontColor('#333333')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-            if (item.specifications) {
-              Text(item.specifications)
-                .fontSize(12)
-                .fontColor('#999999')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .margin({ top: 4 })
-            }
-          }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
-          .margin({ left: 10 })
-
-          // 数量
-          Text(`x${item.quantity}`)
-            .fontSize(13)
-            .fontColor('#666666')
+        Text(this.getFirstProductName(order))
+          .fontSize(14)
+          .fontColor('#666666')
+        if (this.getOrderProducts(order).length > 0) {
+          Text(` 等${this.getOrderProducts(order).length}款餐品`)
+            .fontSize(14)
+            .fontColor('#BBBBBB')
         }
-        .width('100%')
-        .margin({ bottom: 8 })
-      })
+      }
+      .width('100%')
+      .margin({ bottom: 10 })
 
-      // 如果商品超过3个，显示更多提示
-      if (order.items.length > 3) {
-        Text(`...共${order.items.length}件商品`)
-          .fontSize(12)
-          .fontColor('#999999')
-          .margin({ bottom: 8 })
+      // 商品图片
+      if (this.getFirstProductImage(order)) {
+        Image(this.getFirstProductImage(order))
+          .width(80)
+          .height(80)
+          .borderRadius(8)
+          .objectFit(ImageFit.Cover)
+          .margin({ bottom: 12 })
       }
 
       // 分隔线
       Divider()
         .strokeWidth(0.5)
         .color('#E5E5E5')
-        .margin({ top: 8, bottom: 12 })
+        .margin({ bottom: 12 })
 
-      // 底部：金额 + 操作按钮
+      // 底部：操作按钮（右对齐）
       Row() {
-        // 金额
-        Row() {
-          Text('合計: ')
-            .fontSize(14)
-            .fontColor('#666666')
-          Text(this.currencySymbol)
-            .fontSize(12)
-            .fontColor('#333333')
-          Text(order.pay_amount)
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#333333')
-        }
-
         Blank()
 
-        // 再来一单按钮
-        Button('再來一單')
-          .height(32)
-          .fontSize(13)
-          .fontColor('#333333')
-          .backgroundColor(this.themeColor)
-          .borderRadius(16)
-          .padding({ left: 16, right: 16 })
-          .onClick(() => {
-            this.reorder(order);
-          })
+        // 待支付显示"去付款"按钮，否则显示"重新落單"
+        if (this.isPendingPayment(order)) {
+          Button('去付款')
+            .height(36)
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .backgroundColor('#FF6B00')
+            .borderRadius(4)
+            .padding({ left: 20, right: 20 })
+            .onClick(() => {
+              router.pushUrl({
+                url: 'pages/OrderDetailPage',
+                params: {
+                  orderId: parseInt(order.order_id),
+                  themeColor: this.themeColor
+                }
+              });
+            })
+        } else {
+          Button('重新落單')
+            .height(36)
+            .fontSize(14)
+            .fontColor('#666666')
+            .backgroundColor('#FFFFFF')
+            .borderRadius(4)
+            .border({ width: 1, color: '#E5E5E5' })
+            .padding({ left: 20, right: 20 })
+            .onClick(() => {
+              this.reorder(order);
+            })
+        }
       }
       .width('100%')
     }
     .width('100%')
-    .padding(12)
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16, top: 16, bottom: 16 })
     .backgroundColor('#FFFFFF')
     .borderRadius(8)
-    .margin({ left: 12, right: 12, bottom: 10 })
+    .margin({ bottom: 10 })
+    .onClick(() => {
+      router.pushUrl({
+        url: 'pages/OrderDetailPage',
+        params: {
+          orderId: parseInt(order.order_id),
+          themeColor: this.themeColor
+        }
+      });
+    })
   }
 
   // ==================== 产品详情弹窗组件 ====================
@@ -2207,7 +2247,16 @@ struct MenuPage {
    */
   private goToCheckout(): void {
     hilog.info(DOMAIN, TAG, 'Go to checkout, total: %{public}d', this.cartTotal);
-    // TODO: 跳转到结算页面
+    router.pushUrl({
+      url: 'pages/CheckoutPage',
+      params: {
+        orderType: this.orderType,
+        themeColor: this.themeColor,
+        currencySymbol: this.currencySymbol,
+        storeName: this.storeName,
+        storeAddress: this.storeAddress
+      }
+    });
   }
 
   // 检查加送项是否被选中
@@ -2278,6 +2327,12 @@ struct MenuPage {
 
       // 构建配料选择
       const condiments = new Map<string, CondimentSelection>();
+      // 获取当前选择的规格码
+      const selectedStandardCode = this.selectedPolicyItem.prices &&
+        this.selectedPolicyItem.prices.length > this.selectedPolicyPriceIndex
+        ? this.selectedPolicyItem.prices[this.selectedPolicyPriceIndex].standard_code || ''
+        : '';
+
       if (this.selectedPolicyItem.condiment_group) {
         for (const group of this.selectedPolicyItem.condiment_group) {
           const selectedItemId = this.selectedCondimentItems.get(group.condiment_group_id);
@@ -2288,7 +2343,11 @@ struct MenuPage {
                 groupName: group.local_name,
                 itemId: selectedItem.condiment_item_id,
                 itemName: selectedItem.local_name,
-                price: parseFloat(selectedItem.price || '0')
+                price: parseFloat(selectedItem.price || '0'),
+                takeoutPrice: parseFloat(selectedItem.takeout_price || selectedItem.price || '0'),
+                deliveryPrice: parseFloat(selectedItem.delivery_price || selectedItem.price || '0'),
+                isDefault: selectedItem.is_default || '0',
+                standardCode: selectedStandardCode
               });
             }
           }
@@ -2413,6 +2472,7 @@ struct MenuPage {
 
     this.storeName = config.name || '店铺名称';
     this.storeImage = config.store_image || '';
+    this.storeAddress = config.address || '';
 
     this.isOpen = config.is_close !== 1;
     if (!this.isOpen) {
@@ -2537,14 +2597,18 @@ struct MenuPage {
   /**
    * 显示产品详情（点击产品卡片）
    * 调用产品详情API获取完整数据（包含配料选择）
+   * @param product 产品信息
+   * @param groupId 产品所属分组ID
    */
-  private openProductDetail(product: Product): void {
-    hilog.info(DOMAIN, TAG, 'Open product detail: %{public}s (id=%{public}s)', product.local_name, product.product_id);
+  private openProductDetail(product: Product, groupId?: string): void {
+    hilog.info(DOMAIN, TAG, 'Open product detail: %{public}s (id=%{public}s, groupId=%{public}s)',
+      product.local_name, product.product_id, groupId || '');
 
     // 重置选择状态
     this.selectedPriceIndex = 0;
     this.selectedPackageItems = new Map();
     this.selectedProductCondiments = new Map();
+    this.selectedProductGroupId = groupId || '';
     this.quantity = 1;
 
     // 先显示加载状态
@@ -2553,8 +2617,8 @@ struct MenuPage {
     this.selectedProduct = this.convertToProductDetail(product);
 
     // 调用API获取完整详情（包含packageGroups配料数据）
-    const orderType = this.orderType === OrderType.PICKUP ? 1 : 2;
-    this.fetchProductDetail(product.product_id, orderType);
+    // 直接使用枚举值：DINE_IN=1, PICKUP=2, DELIVERY=3
+    this.fetchProductDetail(product.product_id, this.orderType);
   }
 
   /**
@@ -2613,11 +2677,15 @@ struct MenuPage {
     try {
       const response = await apiService.getProductPolicy(policyIds);
       if (response.code === 200 && response.data) {
-        // 提取所有 groupData
+        // 提取所有 groupData，并将 PolicyGroupData.id 设置为每个组的 policy_id
         const allGroups: PolicyGroup[] = [];
         for (const policyData of response.data) {
           if (policyData.groupData && policyData.groupData.length > 0) {
-            allGroups.push(...policyData.groupData);
+            for (const group of policyData.groupData) {
+              // 将父级 PolicyGroupData.id 传递给每个 PolicyGroup 作为 policy_id
+              group.policy_id = policyData.id;
+              allGroups.push(group);
+            }
           }
         }
         this.policyGroups = allGroups;
@@ -2812,6 +2880,47 @@ struct MenuPage {
       }
     }
 
+    // 加送商品加价（policySelections）
+    this.confirmedPolicySelections.forEach((confirmed) => {
+      if (confirmed.item.prices && confirmed.item.prices.length > confirmed.priceIndex) {
+        const price = confirmed.item.prices[confirmed.priceIndex];
+        if (this.orderType === OrderType.PICKUP) {
+          addPrice += parseFloat(price.add_takeout_price || price.add_price || '0');
+        } else {
+          addPrice += parseFloat(price.add_price || '0');
+        }
+      }
+      // 加送商品的配料加价
+      if (confirmed.condiments) {
+        confirmed.condiments.forEach((condiment) => {
+          if (this.orderType === OrderType.PICKUP) {
+            addPrice += condiment.takeoutPrice || condiment.price || 0;
+          } else {
+            addPrice += condiment.price || 0;
+          }
+        });
+      }
+    });
+
+    // 也检查通过 selectedPackageItems 选择的加送商品（无配料的情况）
+    for (const group of this.policyGroups) {
+      if (!this.confirmedPolicySelections.has(group.id)) {
+        const key = `policy_${group.id}`;
+        const selectedSet = this.selectedPackageItems.get(key);
+        if (selectedSet && selectedSet.size > 0) {
+          const selectedProductId = Array.from(selectedSet)[0];
+          const selectedItem = group.item.find(i => i.product_id === selectedProductId);
+          if (selectedItem && selectedItem.prices && selectedItem.prices.length > 0) {
+            if (this.orderType === OrderType.PICKUP) {
+              addPrice += parseFloat(selectedItem.prices[0].add_takeout_price || selectedItem.prices[0].add_price || '0');
+            } else {
+              addPrice += parseFloat(selectedItem.prices[0].add_price || '0');
+            }
+          }
+        }
+      }
+    }
+
     const total = (basePrice + addPrice) * this.quantity;
     return total.toFixed(0);
   }
@@ -2848,7 +2957,10 @@ struct MenuPage {
     // 检查必选项
     if (!this.checkRequiredSelections()) {
       hilog.warn(DOMAIN, TAG, 'Required selections not met');
-      // TODO: 显示提示
+      promptAction.showToast({
+        message: '請完成必選項目',
+        duration: 2000
+      });
       return;
     }
 
@@ -2883,15 +2995,19 @@ struct MenuPage {
     const productId = this.selectedProduct.product_id;
     const productName = this.selectedProduct.local_name;
     const coverImage = this.selectedProduct.cover_image;
+    const groupId = this.selectedProductGroupId;
 
     // 规格选择
     let priceName = '';
     let basePrice = 0;
+    let standardCode = '';
     if (this.selectedProduct.prices && this.selectedProduct.prices.length > 0) {
       const selectedPrice = this.selectedProduct.prices[this.selectedPriceIndex];
       if (selectedPrice.productStandardItem) {
         priceName = selectedPrice.productStandardItem.local_name;
       }
+      // 获取规格码
+      standardCode = selectedPrice.standard_code || '';
       if (this.orderType === OrderType.PICKUP) {
         basePrice = parseFloat(selectedPrice.takeout_price || selectedPrice.price);
       } else {
@@ -2974,8 +3090,10 @@ struct MenuPage {
       if (confirmed) {
         // 计算加送商品加价
         let addPrice = 0;
+        let standardCode = '';
         if (confirmed.item.prices && confirmed.item.prices.length > confirmed.priceIndex) {
           const price = confirmed.item.prices[confirmed.priceIndex];
+          standardCode = price.standard_code || '';
           if (this.orderType === OrderType.PICKUP) {
             addPrice = parseFloat(price.add_takeout_price || price.add_price || '0');
           } else {
@@ -2991,22 +3109,46 @@ struct MenuPage {
             groupName: value.groupName,
             itemId: value.itemId,
             itemName: value.itemName,
-            price: value.price
+            price: value.price,
+            takeoutPrice: value.takeoutPrice,
+            deliveryPrice: value.deliveryPrice,
+            isDefault: value.isDefault,
+            standardCode: value.standardCode
           };
           condiments.push(condiment);
         });
 
+        // 构建原始 prices 数组
+        const originalPrices: CartPolicyPrice[] = [];
+        if (confirmed.item.prices) {
+          for (const p of confirmed.item.prices) {
+            originalPrices.push({
+              standardCode: p.standard_code || '',
+              localName: p.local_name || '',
+              enName: p.en_name || '',
+              addPrice: p.add_price || '0',
+              addTakeoutPrice: p.add_takeout_price || '0',
+              addDeliveryPrice: p.add_delivery_price || '0'
+            });
+          }
+        }
+
         const policyItem: CartPolicyItem = {
           productId: confirmed.item.product_id,
           name: confirmed.item.local_name,
+          shortName: confirmed.item.short_name || confirmed.item.local_name,
+          coverImage: confirmed.item.cover_image || '',
           priceIndex: confirmed.priceIndex,
           priceName: confirmed.priceName,
+          standardCode: standardCode,
           addPrice: addPrice,
-          condiments: condiments
+          condiments: condiments,
+          originalPrices: originalPrices
         };
         const policySelection: CartPolicySelection = {
           groupId: group.id,
           groupName: group.local_name,
+          policyId: group.policy_id,
           item: policyItem
         };
         policySelections.push(policySelection);
@@ -3020,25 +3162,48 @@ struct MenuPage {
           if (selectedItem) {
             let addPrice = 0;
             let policyPriceName = '';
+            let standardCode = '';
             if (selectedItem.prices && selectedItem.prices.length > 0) {
               policyPriceName = selectedItem.prices[0].local_name || '';
+              standardCode = selectedItem.prices[0].standard_code || '';
               if (this.orderType === OrderType.PICKUP) {
                 addPrice = parseFloat(selectedItem.prices[0].add_takeout_price || selectedItem.prices[0].add_price || '0');
               } else {
                 addPrice = parseFloat(selectedItem.prices[0].add_price || '0');
               }
             }
+
+            // 构建原始 prices 数组
+            const originalPrices: CartPolicyPrice[] = [];
+            if (selectedItem.prices) {
+              for (const p of selectedItem.prices) {
+                originalPrices.push({
+                  standardCode: p.standard_code || '',
+                  localName: p.local_name || '',
+                  enName: p.en_name || '',
+                  addPrice: p.add_price || '0',
+                  addTakeoutPrice: p.add_takeout_price || '0',
+                  addDeliveryPrice: p.add_delivery_price || '0'
+                });
+              }
+            }
+
             const policyItem: CartPolicyItem = {
               productId: selectedItem.product_id,
               name: selectedItem.local_name,
+              shortName: selectedItem.short_name || selectedItem.local_name,
+              coverImage: selectedItem.cover_image || '',
               priceIndex: 0,
               priceName: policyPriceName,
+              standardCode: standardCode,
               addPrice: addPrice,
-              condiments: []
+              condiments: [],
+              originalPrices: originalPrices
             };
             const policySelection: CartPolicySelection = {
               groupId: group.id,
               groupName: group.local_name,
+              policyId: group.policy_id,
               item: policyItem
             };
             policySelections.push(policySelection);
@@ -3057,8 +3222,10 @@ struct MenuPage {
       productId: productId,
       productName: productName,
       coverImage: coverImage,
+      groupId: groupId,
       priceIndex: this.selectedPriceIndex,
       priceName: priceName,
+      standardCode: standardCode,
       basePrice: basePrice,
       packageSelections: packageSelections,
       policySelections: policySelections,
@@ -3226,42 +3393,38 @@ struct MenuPage {
 
   /**
    * 获取状态显示文本
+   * status_id: '2'=待支付, '3'=進行中, '4'=已完成, 其他=取消/退款
    */
-  private getStatusText(status: string): string {
-    switch (status) {
-      case 'pending':
-        return '待處理';
-      case 'confirmed':
-        return '已確認';
-      case 'preparing':
-        return '準備中';
-      case 'ready':
-        return '待取餐';
-      case 'completed':
+  private getStatusText(statusId: string): string {
+    switch (statusId) {
+      case '2':
+        return '待支付';
+      case '3':
+        return '進行中';
+      case '4':
         return '已完成';
-      case 'cancelled':
+      case '5':
         return '已取消';
-      case 'refunded':
+      case '6':
         return '已退款';
       default:
-        return status;
+        return statusId || '未知';
     }
   }
 
   /**
    * 获取状态文字颜色
    */
-  private getStatusColor(status: string): string {
-    switch (status) {
-      case 'pending':
-      case 'confirmed':
-      case 'preparing':
-      case 'ready':
+  private getStatusColor(statusId: string): string {
+    switch (statusId) {
+      case '2':
+        return '#FF6B00'; // 待支付 - 橙色
+      case '3':
         return '#FF8C00'; // 进行中 - 橙色
-      case 'completed':
+      case '4':
         return '#4CAF50'; // 已完成 - 绿色
-      case 'cancelled':
-      case 'refunded':
+      case '5':
+      case '6':
         return '#999999'; // 取消/退款 - 灰色
       default:
         return '#666666';
@@ -3271,17 +3434,16 @@ struct MenuPage {
   /**
    * 获取状态背景颜色
    */
-  private getStatusBgColor(status: string): string {
-    switch (status) {
-      case 'pending':
-      case 'confirmed':
-      case 'preparing':
-      case 'ready':
+  private getStatusBgColor(statusId: string): string {
+    switch (statusId) {
+      case '2':
+        return '#FFF3E0'; // 待支付 - 浅橙色
+      case '3':
         return '#FFF3E0'; // 进行中 - 浅橙色
-      case 'completed':
+      case '4':
         return '#E8F5E9'; // 已完成 - 浅绿色
-      case 'cancelled':
-      case 'refunded':
+      case '5':
+      case '6':
         return '#F5F5F5'; // 取消/退款 - 浅灰色
       default:
         return '#F5F5F5';
@@ -3292,7 +3454,7 @@ struct MenuPage {
    * 再来一单
    */
   private reorder(order: Order): void {
-    hilog.info(DOMAIN, TAG, 'Reorder: %{public}s', order.order_no);
+    hilog.info(DOMAIN, TAG, 'Reorder: %{public}s', order.wt_order_id || order.order_id);
     // TODO: 实现再来一单逻辑，将订单商品添加到购物车
   }
 }

@@ -30,7 +30,9 @@ export interface StoreConfig {
   description: string;
   telephone: string;
   address: string;
-  is_close: number;
+  is_close: number;       // 0=营业, 1=休息
+  is_service?: boolean;   // 是否在服务时间内
+  is_operating?: number;  // 是否运营中
   dinein: number;
   takeout: number;
   delivery_mode: number;
@@ -89,6 +91,33 @@ export interface BusinessSchedule {
 }
 
 /**
+ * 热卖推荐商品
+ */
+export interface RankProduct {
+  sale_num: string;
+  product_id: string;
+  product_local_name: string;
+  total: string;
+  dinner_in_sale_num: string;
+  take_out_sale_num: string;
+  product_detail: RankProductDetail;
+}
+
+/**
+ * 热卖推荐商品详情
+ */
+export interface RankProductDetail {
+  product_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  price: string;
+  takeout_price: string;
+  cover_image: string;
+  description?: ProductDescription;
+}
+
+/**
  * 首页数据
  */
 export interface HomeData {
@@ -98,6 +127,7 @@ export interface HomeData {
   notice: StoreNotice[];
   current_schedule: BusinessSchedule | null;
   table_count: string;
+  rank_list?: RankProduct[];  // 热卖推荐列表
 }
 
 /**
@@ -164,6 +194,7 @@ export interface ProductPrice {
   delivery_price: string;
   stock: string;
   status: string;
+  standard_code?: string;         // 规格码（用于提交订单）
   productStandardItem: ProductStandardItem;
 }
 
@@ -239,7 +270,7 @@ export interface PackageItemPrice {
   add_price: string;           // 堂食加价
   add_takeout_price: string;   // 外卖加价
   add_delivery_price: string;  // 配送加价
-  num?: number;
+  num: number;                 // H5格式需要此字段
 }
 
 /**
@@ -432,17 +463,54 @@ export interface ProductMenuData {
  * 会员计划数据
  */
 export interface MemberPlanData {
-  member_plan: MemberPlan[];
+  member_plan: MemberPlan | null;
   membership: Membership | null;
 }
 
+/**
+ * 会员计划详情
+ */
 export interface MemberPlan {
   plan_id: string;
-  name: string;
-  price: string;
-  description: string;
+  store_id: string;
+  scheme_id: string;
+  title: string;
+  name: string;                     // 店铺名称
+  bg_image_url: string;             // 背景图片
+  local_coupons_desc: string;       // 迎新优惠描述（繁体）
+  cn_coupons_desc: string;
+  en_coupons_desc: string;
+  local_stamps_desc: string;        // 印花描述（繁体）"每1個印花換$5優惠券"
+  cn_stamps_desc: string;
+  en_stamps_desc: string;
+  start_date: string;
+  end_date: string;
+  has_gift: string;
+  has_birthday_gift: string;
+  has_credit: string;
+  status: string;
+  open_registration: number;        // 是否开放注册 1=开放
+  point_rules: MemberPointRule[];
 }
 
+/**
+ * 会员积分规则
+ */
+export interface MemberPointRule {
+  id: string;
+  plan_id: string;
+  type: string;
+  amount: string;
+  award_point: string;
+  valid_period: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+/**
+ * 用户会员信息
+ */
 export interface Membership {
   member_id: string;
   level: string;
@@ -472,9 +540,9 @@ export interface LoginResponse {
  * 订单类型枚举
  */
 export enum OrderType {
-  PICKUP = 1,    // 自取
-  DINE_IN = 2,   // 堂食
-  DELIVERY = 3   // 外送
+  DINE_IN = 1,   // 堂食
+  PICKUP = 2,    // 外卖自取
+  DELIVERY = 3   // 外送/配送
 }
 
 /**
@@ -492,49 +560,75 @@ export enum OrderStatus {
 
 /**
  * 订单筛选类型
+ * API接口期望的值: ''=全部, '11'=進行中, '12'=已完成, '13'=退款/取消
  */
 export enum OrderFilterType {
   ALL = '',                      // 全部
-  IN_PROGRESS = 'in_progress',   // 进行中
-  COMPLETED = 'completed',       // 已完成
-  REFUND = 'refund'              // 退款/取消
+  IN_PROGRESS = '11',            // 进行中
+  COMPLETED = '12',              // 已完成
+  REFUND = '13'                  // 退款/取消
 }
 
 /**
- * 订单商品项
+ * 订单商品项 (API原始格式)
  */
 export interface OrderItem {
-  product_id: string;
-  local_name: string;
-  en_name: string;
-  cn_name: string;
-  cover_image: string;
+  product_id?: string;
+  product_name?: string;
+  product_local_name?: string;
+  local_name?: string;
+  en_name?: string;
+  cn_name?: string;
+  cover_image?: string;
   price: string;
-  quantity: number;
+  quantity: string | number;
+  total_price?: string;
   specifications?: string;       // 规格描述
   condiments?: string;           // 配料描述
 }
 
 /**
- * 订单信息
+ * 订单状态信息 (API原始格式)
+ */
+export interface OrderStatusDetail {
+  name: string;
+  order_status_id: string;
+}
+
+/**
+ * 订单店铺信息 (API原始格式)
+ */
+export interface OrderStoreInfo {
+  name: string;
+  store_image?: string;
+}
+
+/**
+ * 订单信息 (API原始格式)
+ * 匹配 /api/order/order-list-app 返回的数据结构
  */
 export interface Order {
   order_id: string;
-  order_no: string;
-  store_id: string;
-  store_name?: string;
-  status: string;
-  status_text?: string;          // 状态显示文本
-  order_type: number;            // 1=自取, 2=堂食
-  order_type_text?: string;
-  total_amount: string;
-  discount_amount?: string;
-  pay_amount: string;
-  items: OrderItem[];
-  created_at: string;
-  pickup_time?: string;          // 取餐时间
-  table_no?: string;             // 桌号（堂食）
-  remark?: string;               // 备注
+  wt_order_id?: string;          // 订单显示号
+  store_id?: string;
+  status_id?: string;            // 状态ID
+  order_status?: string;         // 订单状态
+  order_type?: string | number;  // 1=堂食, 2=外卖自取
+  dine_in_takeout?: string;      // 堂食/外卖标识
+  total: string;                 // 订单总额
+  date_added: string;            // 创建时间
+  redeem_code?: string;          // 取餐码
+  pack_total?: string;           // 餐盒费
+  order_product?: OrderItem[];   // 商品列表
+  status?: OrderStatusDetail;    // 状态详情
+  store?: OrderStoreInfo;        // 店铺信息
+  telephone?: string;
+  // 兼容旧字段
+  order_no?: string;
+  status_text?: string;
+  pay_amount?: string;
+  items?: OrderItem[];
+  created_at?: string;
 }
 
 /**
@@ -595,4 +689,282 @@ export interface CouponListData {
   voucher_list: Coupon[];
   total_coupons: number;
   total_vouchers: number;
+}
+
+// ==================== 提交订单相关模型 ====================
+
+/**
+ * 订单商品 - 配料信息
+ */
+export interface OrderCondiment {
+  condiment_item_id: string;
+  group_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  display_order: string;
+  price: string;
+  takeout_price: string;
+  delivery_price: string;
+  short_name: string;
+  barcode: string;
+  status_id: string;
+  default_type: string;
+  standard_code: string;
+  is_default: string;
+  quantity: number;
+}
+
+/**
+ * 订单商品 - 加送商品描述
+ */
+export interface OrderPolicyProductDescription {
+  product_id: string;
+  language_id: string;
+  name: string;
+  cn_description: string;
+  local_description: string;
+  en_description: string;
+  barcode: string;
+}
+
+/**
+ * 订单商品 - 加送商品
+ */
+export interface OrderPolicyProduct {
+  product_id: string;
+  store_id: string;
+  scheme_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  short_name: string;
+  status: string;
+  takeout: string;
+  cover_image: string;
+  has_stock: string;
+  stock_number: string;
+  prices: PackageItemPrice[];
+  description: OrderPolicyProductDescription | null;
+  box: BoxInfo | null;
+  unit_id: number;
+  max_count: number;
+  condiment_group: CondimentGroupDetail[];
+  condiments: OrderCondiment[];
+  policy_id: string;
+  group_id: string;
+  select_price: PackageItemPrice;
+  quantity: number;
+  version: string;
+  add_price: number;
+  standard_code: string;
+  price: string;
+  product_name: string | null;
+}
+
+/**
+ * 订单商品 - 外卖盒信息
+ */
+export interface OrderBoxInfo {
+  id: string;
+  product_id: string;
+  box_id: string;
+  box: BoxInfo;
+  store_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  price: string;
+  display_order: string;
+}
+
+/**
+ * 订单商品
+ */
+export interface OrderProduct {
+  product_id: string;
+  group_id: string;
+  standard_code: string;
+  condiments: OrderCondiment[];
+  quantity: number;
+  price: number;
+  activity_id: string | null;
+  box: OrderBoxInfo | null;
+  store_id: string;
+  dine_in_takeout: number;
+  member_discount_id: string | null;
+  policy_products: OrderPolicyProduct[][];
+}
+
+/**
+ * 提交订单请求
+ */
+export interface AddOrderRequest {
+  store_id: string;
+  table_id: number;
+  order_type: number;          // 1=堂食, 2=外卖自取, 3=外送
+  order_sub_type: number;
+  customer_num: number;
+  language: string;
+  comment: string;
+  products: OrderProduct[];
+  total: string;
+  discount_total: number;
+  activity_discount_total: number;
+  seat_fee: number;
+  service_fee: string;
+  email: string;
+  telephone: string;
+  telephone_area_code: string;
+  coupon_total: number | null;
+  coupon_id: string | null;
+  form_id: string;
+  member_id: string;
+  delivery_fee: number;
+  order_id: string;
+  qr_code: string | null;
+  table_group_name: string | null;
+  cutlery_num: number;
+  cutlery_total: number;
+  need_cutlery_num: number;
+  member_discount_total: number;
+}
+
+/**
+ * 提交订单响应
+ */
+export interface AddOrderResponse {
+  order_id: number;
+  latest_batch_no: number;
+  customer_id: number;
+}
+
+/**
+ * 订单详情 - 状态信息
+ */
+export interface OrderStatusInfo {
+  order_status_id: string;
+  name: string;
+  customer_name: string;
+  merchant_name: string;
+  tag_name: string;
+}
+
+/**
+ * 订单详情 - 商品信息
+ */
+export interface OrderDetailProduct {
+  order_id: string;
+  order_product_id: string;
+  product_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  short_name: string;
+  price: string;
+  condiment_price: string;
+  total_price: string;
+  original_price: string;
+  quantity: string;
+  total: string;
+  standard_code: string;
+  cover_image: string;
+  status_id: string;
+  box_price: string;
+  standard: OrderDetailStandard[];
+  condiments: OrderCondiment[];
+  policy_products?: OrderDetailProduct[][];
+}
+
+/**
+ * 订单详情 - 规格信息
+ */
+export interface OrderDetailStandard {
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  standard_code: string;
+  price: string;
+  quantity: string;
+}
+
+/**
+ * 订单商品集合
+ */
+export interface OrderProductsCollection {
+  confirmed: OrderDetailProduct[];
+  unconfirmed: OrderDetailProduct[];
+  canceled: OrderDetailProduct[];
+  refund: OrderDetailProduct[];
+}
+
+/**
+ * 订单详情 - 店铺配置简要
+ */
+export interface OrderConfigInfo {
+  name: string;
+  address: string;
+  telephone: string;
+  store_image: string;
+}
+
+/**
+ * 订单详情响应
+ */
+export interface OrderDetailData {
+  order_id: string;
+  customer_id: string;
+  wt_order_id: string;
+  status_id: string;
+  order_type: string;
+  order_sub_type: string;
+  store_id: string;
+  date_added: string;
+  redeem_code: string;
+  total: string;
+  pay_total: string;
+  discount_total: string;
+  product_total: string;
+  pack_total: string;
+  now_total: string;
+  status: OrderStatusInfo;
+  order_products?: OrderProductsCollection;  // 对象格式：{ confirmed: [], unconfirmed: [] }
+  order_product?: OrderDetailProduct[];       // 数组格式：直接是商品数组
+  telephone: string;
+  paid_time_limit: string;
+  config: OrderConfigInfo;
+}
+
+// ==================== 支付相关模型 ====================
+
+/**
+ * 支付方式配置
+ */
+export interface PaymentMethod {
+  id: string;
+  name: string;
+  icon: string;
+  payChannel: number;
+  payMethod: string;
+  payType: string;
+}
+
+/**
+ * 支付订单请求参数
+ */
+export interface PayOrderParams {
+  order_id: number;
+  total: string;
+  pay_channel: number;
+  pay_method: string;
+  pay_type: string;
+}
+
+/**
+ * 支付订单响应数据
+ */
+export interface PayOrderData {
+  url: string;       // 支付跳转URL
+  form?: string;     // 表单脚本
+  params?: string;   // 支付参数
 }

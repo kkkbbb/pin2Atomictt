@@ -28,16 +28,31 @@ export interface CartPackageItem {
 export interface CartPolicySelection {
   groupId: string;
   groupName: string;
+  policyId: string;           // 政策ID（用于提交订单）
   item: CartPolicyItem;
 }
 
 export interface CartPolicyItem {
   productId: string;
   name: string;
+  shortName: string;          // 短名称
+  coverImage: string;         // 封面图
   priceIndex: number;         // 规格索引（熱/凍）
   priceName: string;          // 规格名称
+  standardCode: string;       // 规格码（用于提交订单）
   addPrice: number;           // 加价
   condiments: CartCondiment[];  // 配料选择（甜度、冰量等）
+  // 保存原始 prices 数组用于提交订单
+  originalPrices: CartPolicyPrice[];
+}
+
+export interface CartPolicyPrice {
+  standardCode: string;
+  localName: string;
+  enName: string;
+  addPrice: string;
+  addTakeoutPrice: string;
+  addDeliveryPrice: string;
 }
 
 export interface CartCondiment {
@@ -46,6 +61,10 @@ export interface CartCondiment {
   itemId: string;
   itemName: string;
   price: number;
+  takeoutPrice: number;
+  deliveryPrice: number;
+  isDefault: string;
+  standardCode: string;       // 配料的规格码
 }
 
 /**
@@ -56,10 +75,12 @@ export interface CartItemInput {
   productId: string;
   productName: string;
   coverImage: string;
+  groupId: string;           // 商品分组ID（用于提交订单）
 
   // 规格选择
   priceIndex: number;
   priceName: string;         // 规格名称（如果有多规格）
+  standardCode: string;      // 规格码（用于提交订单）
   basePrice: number;         // 基础价格
 
   // 配料选择
@@ -86,10 +107,12 @@ export interface CartItem {
   productId: string;
   productName: string;
   coverImage: string;
+  groupId: string;           // 商品分组ID（用于提交订单）
 
   // 规格选择
   priceIndex: number;
   priceName: string;         // 规格名称（如果有多规格）
+  standardCode: string;      // 规格码（用于提交订单）
   basePrice: number;         // 基础价格
 
   // 配料选择
@@ -309,8 +332,10 @@ export class AppStateManager {
         productId: cartItem.productId,
         productName: cartItem.productName,
         coverImage: cartItem.coverImage,
+        groupId: cartItem.groupId,
         priceIndex: cartItem.priceIndex,
         priceName: cartItem.priceName,
+        standardCode: cartItem.standardCode,
         basePrice: cartItem.basePrice,
         packageSelections: cartItem.packageSelections,
         policySelections: cartItem.policySelections,

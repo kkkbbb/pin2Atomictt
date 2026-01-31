@@ -2,7 +2,7 @@ import { authentication } from '@kit.AccountKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { apiService, ApiConfig } from '../services/ApiService';
-import { HomeData, OrderType, LoginConfig } from '../models/StoreModels';
+import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan } from '../models/StoreModels';
 import { router, window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
@@ -35,6 +35,16 @@ struct Index {
     facebook_register: 1,
     email_register: 1
   };
+  // 门店地址
+  @State storeAddress: string = '';
+  // 热卖推荐列表
+  @State rankList: RankProduct[] = [];
+  // 会员计划
+  @State memberPlan: MemberPlan | null = null;
+  // 货币符号
+  @State currencySymbol: string = '$';
+  // 骨架屏动画透明度
+  @State skeletonOpacity: number = 0.3;
 
   // 店铺完整数据
   private homeData: HomeData | null = null;
@@ -49,16 +59,31 @@ struct Index {
           // 加载状态
           this.LoadingView()
         } else {
-          // 下方内容区域
-          Column() {
-            // 登录卡片区域
-            this.LoginCard()
+          // 下方内容区域 - 使用Scroll支持滚动
+          Scroll() {
+            Column() {
+              // 登录卡片区域
+              this.LoginCard()
 
-            // 服务选择区域
-            this.ServiceSection()
+              // 服务选择区域
+              this.ServiceSection()
 
-            // 页脚
-            this.Footer()
+              // 会员印花卡片 - 在自取/堂食下面
+              if (this.memberPlan && this.memberPlan.open_registration === 1) {
+                this.MemberStampCard()
+              }
+
+              // 门店选择卡片
+              this.StoreSelectCard()
+
+              // 热卖推荐
+              if (this.rankList.length > 0) {
+                this.HotProductsSection()
+              }
+
+              // 页脚
+              this.Footer()
+            }
           }
           .width('100%')
           .layoutWeight(1)
@@ -111,22 +136,211 @@ struct Index {
     .height('100%')
   }
 
-  // 加载中视图
+  // 加载中视图 - 骨架屏
   @Builder
   LoadingView() {
-    Column() {
-      LoadingProgress()
-        .width(60)
-        .height(60)
-        .color($r('app.color.primary_yellow'))
-      Text('載入中...')
-        .fontSize(14)
-        .fontColor($r('app.color.text_hint'))
+    Scroll() {
+      Column() {
+        // 登录卡片骨架
+        Column() {
+          Row() {
+            Column() {
+              Column()
+                .width(120)
+                .height(20)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+              Column()
+                .width(100)
+                .height(14)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+                .margin({ top: 8 })
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Column()
+              .width(100)
+              .height(40)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(20)
+              .opacity(this.skeletonOpacity)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+
+          Divider().color('#EEEEEE').width('100%')
+
+          Row() {
+            Column()
+              .width(80)
+              .height(20)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+            Divider().vertical(true).height(20).color('#EEEEEE')
+            Column()
+              .width(80)
+              .height(20)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+          }
+          .width('100%')
+          .height(50)
+          .justifyContent(FlexAlign.SpaceAround)
+        }
+        .width('92%')
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(12)
         .margin({ top: 16 })
+        .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
+
+        // 服务选择区域骨架（自取/堂食）
+        Row() {
+          Column() {
+            Column()
+              .width(62)
+              .height(62)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(8)
+              .opacity(this.skeletonOpacity)
+            Column()
+              .width(40)
+              .height(16)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+              .margin({ top: 12 })
+          }
+          .layoutWeight(1)
+          .aspectRatio(1)
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
+
+          Blank().width(12)
+
+          Column() {
+            Column()
+              .width(62)
+              .height(62)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(8)
+              .opacity(this.skeletonOpacity)
+            Column()
+              .width(40)
+              .height(16)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+              .margin({ top: 12 })
+          }
+          .layoutWeight(1)
+          .aspectRatio(1)
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius(12)
+          .justifyContent(FlexAlign.Center)
+          .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
+        }
+        .width('92%')
+        .margin({ top: 16 })
+
+        // 门店卡片骨架
+        Column() {
+          Row() {
+            Column()
+              .width(24)
+              .height(24)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+            Column()
+              .width(60)
+              .height(18)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(4)
+              .opacity(this.skeletonOpacity)
+              .margin({ left: 8 })
+          }
+          .width('100%')
+          .margin({ bottom: 12 })
+
+          Row() {
+            Column()
+              .width(20)
+              .height(20)
+              .backgroundColor('#E0E0E0')
+              .borderRadius(10)
+              .opacity(this.skeletonOpacity)
+            Column() {
+              Column()
+                .width('80%')
+                .height(16)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+              Column()
+                .width('60%')
+                .height(14)
+                .backgroundColor('#E0E0E0')
+                .borderRadius(4)
+                .opacity(this.skeletonOpacity)
+                .margin({ top: 6 })
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+            .margin({ left: 12 })
+          }
+          .width('100%')
+        }
+        .width('92%')
+        .padding(16)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(12)
+        .margin({ top: 16 })
+        .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Center)
     }
     .width('100%')
-    .height('100%')
-    .justifyContent(FlexAlign.Center)
+    .layoutWeight(1)
+    .onAppear(() => {
+      this.startSkeletonAnimation();
+    })
+  }
+
+  // 骨架屏闪烁动画
+  private startSkeletonAnimation(): void {
+    const animate = () => {
+      animateTo({
+        duration: 800,
+        curve: Curve.EaseInOut,
+        onFinish: () => {
+          if (this.isLoading) {
+            animateTo({
+              duration: 800,
+              curve: Curve.EaseInOut,
+              onFinish: () => {
+                if (this.isLoading) {
+                  animate();
+                }
+              }
+            }, () => {
+              this.skeletonOpacity = 0.3;
+            });
+          }
+        }
+      }, () => {
+        this.skeletonOpacity = 0.6;
+      });
+    };
+    animate();
   }
 
   // 店铺头部信息
@@ -134,7 +348,8 @@ struct Index {
   StoreHeader() {
     // 背景层 + 内容层
     Stack() {
-      // 背景层 - 店铺图片放大模糊效果
+      // 背景层 - 根据营业状态显示不同背景色
+      // 营业中：使用主题色（黄色），休息中：使用灰色
       Column() {
         if (this.storeImage) {
           Image(this.storeImage)
@@ -142,12 +357,12 @@ struct Index {
             .height('100%')
             .objectFit(ImageFit.Cover)
             .blur(20)
-            .opacity(0.6)
+            .opacity(0.19) // H5 风格：图片几乎透明，让背景色显示
         }
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#DBD7D8')
+      .backgroundColor(this.isOpen ? this.themeColor : '#DBD7D8')
 
       // 内容层 - 通过固定 margin-top 避开状态栏和胶囊
       Row() {
@@ -514,6 +729,246 @@ struct Index {
     .padding({ top: 30, bottom: 20 })
   }
 
+  // 会员印花卡片 - 黄色边框样式
+  @Builder
+  MemberStampCard() {
+    Row() {
+      // 左侧星星图标 - 使用H5相同的图片
+      Image($r('app.media.icon_member_star'))
+        .width(44)
+        .height(44)
+        .objectFit(ImageFit.Contain)
+
+      // 中间文字
+      Column() {
+        Text('註冊會員，消費集印花')
+          .fontSize(14)
+          .fontWeight(600)
+          .fontColor('#000000')
+        Text(this.memberPlan?.local_stamps_desc || '每1個印花換$5優惠券')
+          .fontSize(10)
+          .fontWeight(400)
+          .fontColor('#666666')
+          .margin({ top: 4 })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .margin({ left: 12 })
+      .layoutWeight(1)
+
+      // 右侧 Go 按钮
+      Row() {
+        Text('Go')
+          .fontSize(12)
+          .fontWeight(500)
+          .fontColor('#232323')
+        Text(' >')
+          .fontSize(12)
+          .fontWeight(500)
+          .fontColor('#232323')
+      }
+      .backgroundColor(this.themeColor)
+      .borderRadius(16)
+      .padding({ left: 14, right: 10, top: 6, bottom: 6 })
+      .onClick(() => {
+        this.openLoginPanel();
+      })
+    }
+    .width('92%')
+    .height(70)
+    .padding({ left: 12, right: 12, top: 14, bottom: 14 })
+    .borderRadius(12)
+    .backgroundImage($r('app.media.bg_member_stamp'))
+    .backgroundImageSize(ImageSize.Cover)
+    .margin({ top: 12 })
+  }
+
+
+  // 门店选择卡片
+  @Builder
+  StoreSelectCard() {
+    Column() {
+      // 标题行 - 带门店图标
+      Row() {
+        // 门店图标 - 使用H5相同的图片
+        Image($r('app.media.icon_store_select'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+        Text('已選門店')
+          .fontSize(16)
+          .fontWeight(700)
+          .fontColor('#22272F')
+          .margin({ left: 8 })
+      }
+      .width('100%')
+      .margin({ bottom: 12 })
+
+      // 门店信息行
+      Row() {
+        // 左侧门店信息
+        Column() {
+          Text(this.storeName)
+            .fontSize(16)
+            .fontWeight(500)
+            .fontColor('#232323')
+          Text(this.storeAddress)
+            .fontSize(11)
+            .fontWeight(400)
+            .fontColor('#666666')
+            .margin({ top: 6 })
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        // 右侧选择按钮
+        Button('選擇其他門店')
+          .fontSize(11)
+          .fontWeight(500)
+          .fontColor('#232323')
+          .backgroundColor(this.themeColor)
+          .borderRadius(16)
+          .height(32)
+          .onClick(() => {
+            // TODO: 跳转到门店选择页面
+            hilog.info(DOMAIN, TAG, 'Select other store');
+          })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+    }
+    .width('92%')
+    .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+    .backgroundColor($r('app.color.card_background'))
+    .borderRadius(12)
+    .margin({ top: 12 })
+    .shadow({
+      radius: 4,
+      color: 'rgba(0, 0, 0, 0.08)',
+      offsetX: 0,
+      offsetY: 2
+    })
+  }
+
+
+  // 热卖推荐区域 - 两列瀑布流布局
+  @Builder
+  HotProductsSection() {
+    Column() {
+      // 标题
+      Row() {
+        Text('熱賣推薦')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16 })
+      .margin({ top: 20, bottom: 12 })
+
+      // 两列瀑布流布局
+      Row() {
+        // 左列
+        Column({ space: 10 }) {
+          ForEach(this.getLeftColumnItems(), (item: RankProduct) => {
+            this.HotProductCard(item)
+          }, (item: RankProduct) => item.product_id)
+        }
+        .layoutWeight(1)
+
+        Blank().width(10)
+
+        // 右列
+        Column({ space: 10 }) {
+          ForEach(this.getRightColumnItems(), (item: RankProduct) => {
+            this.HotProductCard(item)
+          }, (item: RankProduct) => item.product_id)
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16 })
+      .alignItems(VerticalAlign.Top)
+    }
+  }
+
+  // 获取左列商品（奇数索引）
+  private getLeftColumnItems(): RankProduct[] {
+    const items: RankProduct[] = [];
+    const list = this.rankList.slice(0, 10);
+    for (let i = 0; i < list.length; i += 2) {
+      items.push(list[i]);
+    }
+    return items;
+  }
+
+  // 获取右列商品（偶数索引）
+  private getRightColumnItems(): RankProduct[] {
+    const items: RankProduct[] = [];
+    const list = this.rankList.slice(0, 10);
+    for (let i = 1; i < list.length; i += 2) {
+      items.push(list[i]);
+    }
+    return items;
+  }
+
+  // 热卖商品卡片 - 大图样式，价格在右下角
+  @Builder
+  HotProductCard(item: RankProduct) {
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      Column() {
+        // 商品图片
+        if (item.product_detail?.cover_image) {
+          Image(item.product_detail.cover_image)
+            .width('100%')
+            .height(140)
+            .objectFit(ImageFit.Cover)
+            .borderRadius({ topLeft: 8, topRight: 8 })
+        } else {
+          Column()
+            .width('100%')
+            .height(140)
+            .backgroundColor('#F5F5F5')
+            .borderRadius({ topLeft: 8, topRight: 8 })
+        }
+
+        // 商品名称
+        Text(item.product_detail?.local_name || item.product_local_name)
+          .fontSize(13)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .padding({ left: 8, right: 8, top: 8, bottom: 10 })
+          .width('100%')
+      }
+      .width('100%')
+      .backgroundColor($r('app.color.card_background'))
+      .borderRadius(8)
+
+      // 价格标签 - 右下角黄色背景
+      Row() {
+        Text(this.currencySymbol)
+          .fontSize(10)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ top: 2 })
+        Text(item.product_detail?.takeout_price || item.product_detail?.price || '0')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+      }
+      .backgroundColor(this.themeColor)
+      .borderRadius({ topLeft: 12, bottomRight: 8 })
+      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+      .position({ x: '100%', y: 140 })
+      .translate({ x: '-100%', y: -24 })
+    }
+    .width('100%')
+    .onClick(() => {
+      this.selectOrderType(OrderType.PICKUP);
+    })
+  }
+
   // 登录面板（底部弹出）
   @Builder
   LoginPanel() {
@@ -858,21 +1313,41 @@ struct Index {
       apiService.setStoreId(ApiConfig.DEFAULT_STORE_ID);
 
       // 获取首页数据
-      const response = await apiService.getHomeData();
+      const homeResponse = await apiService.getHomeData();
 
-      if (response.code === 200 && response.data) {
-        this.homeData = response.data;
-        this.updateUIFromData(response.data);
+      // 处理首页数据
+      if (homeResponse.code === 200 && homeResponse.data) {
+        this.homeData = homeResponse.data;
+        this.updateUIFromData(homeResponse.data);
         hilog.info(DOMAIN, TAG, 'Store data loaded successfully');
       } else {
-        hilog.error(DOMAIN, TAG, 'Failed to load store data: %{public}s', response.msg);
+        hilog.error(DOMAIN, TAG, 'Failed to load store data: %{public}s', homeResponse.msg);
         this.setDefaultData();
       }
+
+      // 获取会员计划
+      this.loadMemberPlan();
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Error loading store data: %{public}s', JSON.stringify(error));
       this.setDefaultData();
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * 加载会员计划数据
+   */
+  private async loadMemberPlan(): Promise<void> {
+    try {
+      const memberResponse = await apiService.getMemberPlan();
+      if (memberResponse.code === 200 && memberResponse.data?.member_plan) {
+        this.memberPlan = memberResponse.data.member_plan;
+        hilog.info(DOMAIN, TAG, 'Member plan loaded: %{public}s, open_registration=%{public}d',
+          this.memberPlan.title, this.memberPlan.open_registration);
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Error loading member plan: %{public}s', JSON.stringify(error));
     }
   }
 
@@ -887,14 +1362,18 @@ struct Index {
     this.storeImage = config.store_image || '';
     this.themeColor = config.theme_color || '#FFD700';
 
-    // 营业状态
-    this.isOpen = config.is_close !== 1;
-    if (!this.isOpen) {
+    // 营业状态 - 根据 is_close 和 is_service 判断
+    // is_close: 0=营业, 1=休息
+    // is_service: true=服务中, false=非服务中
+    const isService = config.is_service !== false;
+    this.isOpen = config.is_close !== 1 && isService;
+
+    if (this.isOpen) {
+      this.storeStatus = '營業中';
+      this.todayStatus = '';
+    } else {
       this.storeStatus = '商家休息中';
       this.todayStatus = '今日休業';
-    } else {
-      this.storeStatus = '';
-      this.todayStatus = '';
     }
 
     // 服务类型
@@ -918,6 +1397,20 @@ struct Index {
       hilog.info(DOMAIN, TAG, 'Login config loaded: email=%{public}d, google=%{public}d, facebook=%{public}d, phone=%{public}d',
         this.loginConfig.email_register, this.loginConfig.google_register,
         this.loginConfig.facebook_register, this.loginConfig.telephone_login);
+    }
+
+    // 门店地址
+    this.storeAddress = config.address || '';
+
+    // 热卖推荐
+    if (data.rank_list && data.rank_list.length > 0) {
+      this.rankList = data.rank_list;
+      hilog.info(DOMAIN, TAG, 'Rank list loaded: %{public}d items', this.rankList.length);
+    }
+
+    // 货币符号
+    if (data.currency?.symbol_left) {
+      this.currencySymbol = data.currency.symbol_left;
     }
   }
 
