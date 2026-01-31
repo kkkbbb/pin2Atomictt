@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/Index",
-    "pages/MenuPage"
+    "pages/MenuPage",
+    "pages/CouponPage"
   ]
 }

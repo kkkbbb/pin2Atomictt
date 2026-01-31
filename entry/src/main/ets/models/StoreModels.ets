@@ -8,6 +8,17 @@ export interface ApiResponse<T> {
 }
 
 /**
+ * 登录方式配置
+ */
+export interface LoginConfig {
+  telephone_login: number;      // 手机号登录
+  telephone_register: number;   // 手机号注册
+  google_register: number;      // Google登录
+  facebook_register: number;    // Facebook登录
+  email_register: number;       // 邮箱登录
+}
+
+/**
  * 店铺配置信息
  */
 export interface StoreConfig {
@@ -30,6 +41,7 @@ export interface StoreConfig {
   business_schedule: BusinessSchedule[];
   seat_fee: string;
   has_seat_fee: number;
+  login?: LoginConfig;  // 登录方式配置
 }
 
 /**
@@ -127,7 +139,7 @@ export interface Product {
   delivery: string;
   description: ProductDescription;
   prices: ProductPrice[];
-  condiment_group: CondimentGroup[];
+  condiment_group: CondimentGroupDetail[];  // 配料选择（甜度、冰量等）
 }
 
 /**
@@ -163,7 +175,7 @@ export interface ProductStandardItem {
 }
 
 /**
- * 调味料/配料组
+ * 调味料/配料组（菜单列表用）
  */
 export interface CondimentGroup {
   group_id: string;
@@ -178,10 +190,242 @@ export interface CondimentItem {
 }
 
 /**
+ * 产品详情 - 套餐组（配料选择）
+ */
+export interface PackageGroup {
+  id: string;
+  product_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  select_count: string;      // 最少选择数量
+  max_count: string;         // 最多选择数量，0=不限
+  free_count: string;        // 免费数量
+  select_type: string;       // 选择类型: "1"=多选, "2"=单选
+  sort_num: string;
+  status_id: string;
+  item: PackageItem[];
+}
+
+/**
+ * 产品详情 - 套餐项（配料项）
+ */
+export interface PackageItem {
+  product_id: string;
+  store_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  short_name: string;
+  cover_image: string;
+  status: string;
+  takeout: string;
+  has_stock: string;
+  max_count: string | number;
+  prices: PackageItemPrice[];
+  description?: ProductDescription;
+  condiment_group?: CondimentGroup[];
+}
+
+/**
+ * 产品详情 - 套餐项价格
+ */
+export interface PackageItemPrice {
+  standard_code: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  short_name: string;
+  add_price: string;           // 堂食加价
+  add_takeout_price: string;   // 外卖加价
+  add_delivery_price: string;  // 配送加价
+  num?: number;
+}
+
+/**
+ * 产品详情 - 政策信息
+ */
+export interface PolicyInfo {
+  id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  local_description: string;
+  status_id: string;
+}
+
+/**
+ * 产品详情 - 政策说明
+ */
+export interface ProductPolicy {
+  policy_id: string;
+  product_id: string;
+  sort_num: string;
+  policy: PolicyInfo;
+}
+
+/**
+ * 政策组数据 - 加送選擇
+ * 来自 /api/product/policy 接口
+ */
+export interface PolicyGroupData {
+  id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  local_description: string;
+  status_id: string;
+  store_id: string;
+  groupData: PolicyGroup[];
+}
+
+/**
+ * 政策组 - 加送選擇组
+ */
+export interface PolicyGroup {
+  id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  sort_num: string;
+  policy_id: string;
+  status_id: string;
+  free_count: string;       // 免费数量
+  required: string;         // 是否必选: "1"=必选
+  item: PolicyGroupItem[];
+}
+
+/**
+ * 政策组项 - 可选饮品/加送项
+ */
+export interface PolicyGroupItem {
+  product_id: string;
+  store_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  short_name: string;
+  status: string;
+  takeout: string;
+  cover_image: string;
+  has_stock: string;
+  prices: PackageItemPrice[];
+  description?: ProductDescription;
+  max_count: string | number;
+  condiment_group: CondimentGroupDetail[];  // 饮品自己的配料组（甜度、冰量等）
+}
+
+/**
+ * 配料组详情（用于饮品的甜度、冰量等选项）
+ */
+export interface CondimentGroupDetail {
+  condiment_group_id: string;
+  store_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  standard_local_name: string;
+  multi_select: string;      // "0"=单选, "1"=多选
+  max_select_num: string;
+  display_order: string | number;
+  item: CondimentItemDetail[];
+}
+
+/**
+ * 配料项详情
+ */
+export interface CondimentItemDetail {
+  condiment_item_id: string;
+  group_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  display_order: string;
+  price: string;
+  takeout_price: string;
+  delivery_price: string;
+  status_id: string;
+  is_default: string;       // "1"=默认选中
+}
+
+/**
+ * 产品详情 - 盒子信息
+ */
+export interface BoxInfo {
+  box_id: string;
+  store_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  price: string;
+}
+
+/**
+ * 产品详情 - 外卖盒
+ */
+export interface ProductBox {
+  id: string;
+  product_id: string;
+  box_id: string;
+  price: string;
+  box: BoxInfo;
+}
+
+/**
+ * 产品详情完整数据
+ */
+export interface ProductDetail {
+  product_id: string;
+  store_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  cover_image: string;
+  price: string;
+  takeout_price?: string;
+  delivery_price?: string;
+  sale_num: string;
+  has_stock: string;
+  takeout: string;
+  dinner_in: string;
+  delivery: string;
+  status: string;
+  description?: ProductDescription;
+  prices: ProductPrice[];
+  packageGroups: PackageGroup[];      // 配料选择组
+  policy: ProductPolicy[];             // 套餐政策说明
+  box?: ProductBox;                    // 外卖盒
+  condiment_group?: CondimentGroupDetail[];  // 配料选择（甜度、冰量等）
+  images?: string[];
+}
+
+/**
+ * 顶级菜单分组（横向导航条）
+ */
+export interface MenuGroup {
+  menu_id: string;
+  local_name: string;
+  cn_name: string;
+  en_name: string;
+  store_id: string;
+  display_order: string;
+  status_id: string;
+  takeout: string;
+  dinein: string;
+  delivery: string;
+  start_time?: string;       // 供应开始时间
+  end_time?: string;         // 供应结束时间
+  groups: string[];          // 包含的二级分类 group_id 数组
+  can_order: number;         // 当前时段是否可点餐 1=可以 0=不可以
+  show_type: string;         // 展示类型: "1"=小图模式 "2"=大图模式
+}
+
+/**
  * 产品菜单数据
  */
 export interface ProductMenuData {
   group: ProductGroup[];
+  menu_group: MenuGroup[];   // 顶级菜单分组
 }
 
 /**
@@ -231,4 +475,124 @@ export enum OrderType {
   PICKUP = 1,    // 自取
   DINE_IN = 2,   // 堂食
   DELIVERY = 3   // 外送
+}
+
+/**
+ * 订单状态枚举
+ */
+export enum OrderStatus {
+  PENDING = 'pending',           // 待处理
+  CONFIRMED = 'confirmed',       // 已确认
+  PREPARING = 'preparing',       // 准备中
+  READY = 'ready',               // 待取餐
+  COMPLETED = 'completed',       // 已完成
+  CANCELLED = 'cancelled',       // 已取消
+  REFUNDED = 'refunded'          // 已退款
+}
+
+/**
+ * 订单筛选类型
+ */
+export enum OrderFilterType {
+  ALL = '',                      // 全部
+  IN_PROGRESS = 'in_progress',   // 进行中
+  COMPLETED = 'completed',       // 已完成
+  REFUND = 'refund'              // 退款/取消
+}
+
+/**
+ * 订单商品项
+ */
+export interface OrderItem {
+  product_id: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  cover_image: string;
+  price: string;
+  quantity: number;
+  specifications?: string;       // 规格描述
+  condiments?: string;           // 配料描述
+}
+
+/**
+ * 订单信息
+ */
+export interface Order {
+  order_id: string;
+  order_no: string;
+  store_id: string;
+  store_name?: string;
+  status: string;
+  status_text?: string;          // 状态显示文本
+  order_type: number;            // 1=自取, 2=堂食
+  order_type_text?: string;
+  total_amount: string;
+  discount_amount?: string;
+  pay_amount: string;
+  items: OrderItem[];
+  created_at: string;
+  pickup_time?: string;          // 取餐时间
+  table_no?: string;             // 桌号（堂食）
+  remark?: string;               // 备注
+}
+
+/**
+ * 订单列表响应
+ */
+export interface OrderListData {
+  order_list: Order[];
+  total: string;
+}
+
+/**
+ * 优惠券状态枚举
+ */
+export enum CouponStatus {
+  AVAILABLE = 'available',     // 可使用
+  USED = 'used',               // 已使用
+  EXPIRED = 'expired'          // 已过期
+}
+
+/**
+ * 优惠券类型枚举
+ */
+export enum CouponType {
+  COUPON = 'coupon',           // 优惠券
+  VOUCHER = 'voucher'          // 兑换券
+}
+
+/**
+ * 优惠券信息
+ */
+export interface Coupon {
+  coupon_id: string;
+  coupon_code: string;
+  name: string;
+  local_name: string;
+  en_name: string;
+  cn_name: string;
+  type: string;                // coupon | voucher
+  discount_type: string;       // percentage | fixed | free_item
+  discount_value: string;      // 折扣值
+  min_order_amount?: string;   // 最低消费
+  max_discount?: string;       // 最大折扣金额
+  start_date: string;
+  end_date: string;
+  status: string;
+  description?: string;
+  usage_limit?: number;
+  used_count?: number;
+  applicable_products?: string[];  // 适用商品
+  applicable_categories?: string[]; // 适用分类
+}
+
+/**
+ * 优惠券列表响应
+ */
+export interface CouponListData {
+  coupon_list: Coupon[];
+  voucher_list: Coupon[];
+  total_coupons: number;
+  total_vouchers: number;
 }

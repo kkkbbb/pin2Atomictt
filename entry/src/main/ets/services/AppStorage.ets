@@ -1,20 +1,114 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { Product } from '../models/StoreModels';
+import { AppConfig } from '../config/AppConfig';
 
 const DOMAIN = 0x0000;
 const TAG = 'AppStorage';
 const PREFERENCES_NAME = 'pin2eat_store';
 
 /**
+ * 购物车项 - 配料选择
+ */
+export interface CartPackageSelection {
+  groupId: string;
+  groupName: string;
+  items: CartPackageItem[];
+}
+
+export interface CartPackageItem {
+  productId: string;
+  name: string;
+  addPrice: number;
+}
+
+/**
+ * 购物车项 - 加送商品选择
+ */
+export interface CartPolicySelection {
+  groupId: string;
+  groupName: string;
+  item: CartPolicyItem;
+}
+
+export interface CartPolicyItem {
+  productId: string;
+  name: string;
+  priceIndex: number;         // 规格索引（熱/凍）
+  priceName: string;          // 规格名称
+  addPrice: number;           // 加价
+  condiments: CartCondiment[];  // 配料选择（甜度、冰量等）
+}
+
+export interface CartCondiment {
+  groupId: string;
+  groupName: string;
+  itemId: string;
+  itemName: string;
+  price: number;
+}
+
+/**
+ * 购物车项输入（不含cartItemId，用于添加到购物车）
+ */
+export interface CartItemInput {
+  // 商品基本信息
+  productId: string;
+  productName: string;
+  coverImage: string;
+
+  // 规格选择
+  priceIndex: number;
+  priceName: string;         // 规格名称（如果有多规格）
+  basePrice: number;         // 基础价格
+
+  // 配料选择
+  packageSelections: CartPackageSelection[];
+
+  // 加送商品选择
+  policySelections: CartPolicySelection[];
+
+  // 数量
+  quantity: number;
+
+  // 单价（包含所有加价）
+  unitPrice: number;
+
+  // 规格描述（用于显示 "奶茶·熱·標準·標準"）
+  specDescription: string;
+}
+
+/**
  * 购物车项
  */
 export interface CartItem {
-  product: Product;
+  // 商品基本信息
+  productId: string;
+  productName: string;
+  coverImage: string;
+
+  // 规格选择
+  priceIndex: number;
+  priceName: string;         // 规格名称（如果有多规格）
+  basePrice: number;         // 基础价格
+
+  // 配料选择
+  packageSelections: CartPackageSelection[];
+
+  // 加送商品选择
+  policySelections: CartPolicySelection[];
+
+  // 数量
   quantity: number;
-  selectedPrice: string;
-  selectedSpec: string;
+
+  // 单价（包含所有加价）
+  unitPrice: number;
+
+  // 规格描述（用于显示 "奶茶·熱·標準·標準"）
+  specDescription: string;
+
+  // 唯一标识（用于区分相同商品不同配料的项）
+  cartItemId: string;
 }
 
 /**
@@ -44,8 +138,8 @@ export class AppStateManager {
   private _cartItems: CartItem[] = [];
 
   // 店铺配置
-  private _storeId: string = '1551';
-  private _themeColor: string = '#FFD700';
+  private _storeId: string = AppConfig.DEFAULT_STORE_ID;
+  private _themeColor: string = AppConfig.DEFAULT_THEME_COLOR;
 
   private constructor() {}
 
@@ -78,7 +172,7 @@ export class AppStateManager {
 
     try {
       this._token = await this.preferences.get('token', '') as string;
-      this._storeId = await this.preferences.get('store_id', '1551') as string;
+      this._storeId = await this.preferences.get('store_id', AppConfig.DEFAULT_STORE_ID) as string;
 
       const userInfoStr = await this.preferences.get('user_info', '') as string;
       if (userInfoStr) {
@@ -159,41 +253,85 @@ export class AppStateManager {
 
   get cartTotal(): number {
     return this._cartItems.reduce((sum, item) => {
-      return sum + parseFloat(item.selectedPrice) * item.quantity;
+      return sum + item.unitPrice * item.quantity;
     }, 0);
+  }
+
+  /**
+   * 生成唯一购物车项ID
+   */
+  private generateCartItemId(cartItem: CartItemInput): string {
+    // 基于商品ID、规格、配料选择生成唯一ID
+    const parts: string[] = [];
+    parts.push(cartItem.productId);
+    parts.push(cartItem.priceIndex.toString());
+
+    // 配料选择部分
+    const pkgParts: string[] = [];
+    for (const p of cartItem.packageSelections) {
+      const itemIds: string[] = [];
+      for (const item of p.items) {
+        itemIds.push(item.productId);
+      }
+      pkgParts.push(`${p.groupId}:${itemIds.join(',')}`);
+    }
+    parts.push(pkgParts.join('|'));
+
+    // 加送商品选择部分
+    const policyParts: string[] = [];
+    for (const p of cartItem.policySelections) {
+      const condimentIds: string[] = [];
+      for (const c of p.item.condiments) {
+        condimentIds.push(c.itemId);
+      }
+      policyParts.push(`${p.groupId}:${p.item.productId}:${p.item.priceIndex}:${condimentIds.join(',')}`);
+    }
+    parts.push(policyParts.join('|'));
+
+    return parts.join('_');
   }
 
   /**
    * 添加商品到购物车
    */
-  async addToCart(product: Product, quantity: number = 1, spec?: string): Promise<void> {
+  async addToCart(cartItem: CartItemInput): Promise<void> {
+    const cartItemId = this.generateCartItemId(cartItem);
+
     const existingIndex = this._cartItems.findIndex(
-      item => item.product.product_id === product.product_id &&
-        item.selectedSpec === (spec || '')
+      item => item.cartItemId === cartItemId
     );
 
     if (existingIndex >= 0) {
-      this._cartItems[existingIndex].quantity += quantity;
+      this._cartItems[existingIndex].quantity += cartItem.quantity;
     } else {
-      this._cartItems.push({
-        product: product,
-        quantity: quantity,
-        selectedPrice: product.price,
-        selectedSpec: spec || ''
-      });
+      // 创建完整的 CartItem
+      const newItem: CartItem = {
+        productId: cartItem.productId,
+        productName: cartItem.productName,
+        coverImage: cartItem.coverImage,
+        priceIndex: cartItem.priceIndex,
+        priceName: cartItem.priceName,
+        basePrice: cartItem.basePrice,
+        packageSelections: cartItem.packageSelections,
+        policySelections: cartItem.policySelections,
+        quantity: cartItem.quantity,
+        unitPrice: cartItem.unitPrice,
+        specDescription: cartItem.specDescription,
+        cartItemId: cartItemId
+      };
+      this._cartItems.push(newItem);
     }
 
     await this.saveData('cart', JSON.stringify(this._cartItems));
-    hilog.info(DOMAIN, TAG, 'Cart updated: %{public}d items', this.cartCount);
+    hilog.info(DOMAIN, TAG, 'Cart updated: %{public}d items, total: %{public}d',
+      this.cartCount, this.cartTotal);
   }
 
   /**
    * 更新购物车商品数量
    */
-  async updateCartItemQuantity(productId: string, spec: string, quantity: number): Promise<void> {
-    const index = this._cartItems.findIndex(
-      item => item.product.product_id === productId && item.selectedSpec === spec
-    );
+  async updateCartItemQuantity(cartItemId: string, quantity: number): Promise<void> {
+    const index = this._cartItems.findIndex(item => item.cartItemId === cartItemId);
 
     if (index >= 0) {
       if (quantity <= 0) {
@@ -202,6 +340,20 @@ export class AppStateManager {
         this._cartItems[index].quantity = quantity;
       }
       await this.saveData('cart', JSON.stringify(this._cartItems));
+      hilog.info(DOMAIN, TAG, 'Cart item updated: %{public}s, qty: %{public}d',
+        cartItemId, quantity);
+    }
+  }
+
+  /**
+   * 删除购物车项
+   */
+  async removeCartItem(cartItemId: string): Promise<void> {
+    const index = this._cartItems.findIndex(item => item.cartItemId === cartItemId);
+    if (index >= 0) {
+      this._cartItems.splice(index, 1);
+      await this.saveData('cart', JSON.stringify(this._cartItems));
+      hilog.info(DOMAIN, TAG, 'Cart item removed: %{public}s', cartItemId);
     }
   }
 
@@ -211,6 +363,7 @@ export class AppStateManager {
   async clearCart(): Promise<void> {
     this._cartItems = [];
     await this.saveData('cart', '[]');
+    hilog.info(DOMAIN, TAG, 'Cart cleared');
   }
 
   // ==================== 店铺配置 ====================

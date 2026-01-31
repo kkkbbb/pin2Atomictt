@@ -36,13 +36,12 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
 
-    // 设置全屏显示
+    // 设置窗口属性 - 全屏模式，内容延伸到状态栏
     windowStage.getMainWindow().then((mainWindow) => {
-      // 设置状态栏和导航栏属性
       mainWindow.setWindowLayoutFullScreen(true);
       mainWindow.setWindowSystemBarProperties({
         statusBarColor: '#00000000',
-        navigationBarColor: '#FFFFFF',
+        navigationBarColor: '#00000000',
         statusBarContentColor: '#333333'
       });
     });

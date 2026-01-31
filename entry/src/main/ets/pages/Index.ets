@@ -2,7 +2,7 @@ import { authentication } from '@kit.AccountKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { apiService, ApiConfig } from '../services/ApiService';
-import { HomeData, OrderType } from '../models/StoreModels';
+import { HomeData, OrderType, LoginConfig } from '../models/StoreModels';
 import { router, window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
@@ -22,22 +22,35 @@ struct Index {
   @State notices: string[] = [];
   @State hasDineIn: boolean = true;
   @State hasTakeout: boolean = true;
-  @State statusBarHeight: number = 0;
+  @State topAvoidHeight: number = 56; // 默认安全区域高度
+  @State headerContentHeight: number = 100; // header 内容区域高度（可收缩部分）
+  @State scrollOffset: number = 0; // 滚动偏移量
+  @State showLoginPanel: boolean = false; // 控制登录面板显示
+  @State loginPanelTab: number = 0; // 登录面板标签页：0=登录，1=更多優惠
+  // 登录方式配置（从API获取）
+  @State loginConfig: LoginConfig = {
+    telephone_login: 1,
+    telephone_register: 0,
+    google_register: 1,
+    facebook_register: 1,
+    email_register: 1
+  };
 
   // 店铺完整数据
   private homeData: HomeData | null = null;
 
   build() {
-    Column() {
-      if (this.isLoading) {
-        // 加载状态
-        this.LoadingView()
-      } else {
-        Scroll() {
-          Column() {
-            // 顶部店铺信息区域
-            this.StoreHeader()
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
+        // 顶部店铺信息区域（固定）
+        this.StoreHeader()
 
+        if (this.isLoading) {
+          // 加载状态
+          this.LoadingView()
+        } else {
+          // 下方内容区域
+          Column() {
             // 登录卡片区域
             this.LoginCard()
 
@@ -48,16 +61,54 @@ struct Index {
             this.Footer()
           }
           .width('100%')
+          .layoutWeight(1)
+          .clip(true)
+          .gesture(
+            PanGesture({ direction: PanDirection.Vertical })
+              .onActionStart(() => {
+                // 手势开始
+              })
+              .onActionUpdate((event: GestureEvent) => {
+                // 只响应下拉（正值表示向下拖动）
+                if (event.offsetY > 0) {
+                  // 限制最大下拉 50vp，添加阻尼效果
+                  this.scrollOffset = -Math.min(event.offsetY * 0.5, 50);
+                }
+              })
+              .onActionEnd(() => {
+                // 释放时回弹
+                animateTo({
+                  duration: 200,
+                  curve: Curve.EaseOut
+                }, () => {
+                  this.scrollOffset = 0;
+                });
+              })
+          )
         }
-        .scrollBar(BarState.Off)
-        .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.page_background'))
+
+      // 登录面板遮罩层
+      if (this.showLoginPanel) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .onClick(() => {
+            this.closeLoginPanel();
+          })
+      }
+
+      // 登录面板
+      if (this.showLoginPanel) {
+        this.LoginPanel()
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   // 加载中视图
@@ -81,6 +132,7 @@ struct Index {
   // 店铺头部信息
   @Builder
   StoreHeader() {
+    // 背景层 + 内容层
     Stack() {
       // 背景层 - 店铺图片放大模糊效果
       Column() {
@@ -97,102 +149,93 @@ struct Index {
       .height('100%')
       .backgroundColor('#DBD7D8')
 
-      // 底部圆角遮罩
-      Column()
-        .width('100%')
-        .height(16)
-        .backgroundColor($r('app.color.page_background'))
-        .borderRadius({ topLeft: 16, topRight: 16 })
-        .position({ x: 0, y: '100%' })
-        .translate({ y: -16 })
-
-      // 内容层
-      Column() {
-        Row() {
-          // 店铺图片
-          if (this.storeImage) {
-            Image(this.storeImage)
-              .width(80)
-              .height(80)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-              .shadow({
-                radius: 4,
-                color: 'rgba(0, 0, 0, 0.15)',
-                offsetX: 0,
-                offsetY: 2
-              })
-          } else {
-            Image($r('app.media.startIcon'))
-              .width(80)
-              .height(80)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-          }
-
-          // 店铺信息
-          Column() {
-            // 店铺名称
-            Text(this.storeName)
-              .fontSize(22)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-
-            // 状态标签行
-            Row() {
-              // 商家状态标签
-              if (this.storeStatus) {
-                Text(this.storeStatus)
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_secondary'))
-                  .backgroundColor('rgba(255, 255, 255, 0.9)')
-                  .borderRadius(4)
-                  .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-              }
-
-              // 今日状态标签
-              if (this.todayStatus) {
-                Text(this.todayStatus)
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_secondary'))
-                  .backgroundColor('rgba(255, 255, 255, 0.9)')
-                  .borderRadius(4)
-                  .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-                  .margin({ left: 6 })
-              }
-
-              // 关于商户按钮
-              Row() {
-                Text('關於商戶')
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_secondary'))
-                Text('\u24D8')
-                  .fontSize(11)
-                  .fontColor($r('app.color.text_secondary'))
-                  .margin({ left: 2 })
-              }
-              .backgroundColor('rgba(255, 255, 255, 0.95)')
-              .borderRadius(4)
-              .padding({ left: 6, right: 6, top: 3, bottom: 3 })
-              .border({ width: 1, color: '#E0E0E0' })
-              .margin({ left: 6 })
-              .onClick(() => {
-                this.showStoreInfo();
-              })
-            }
-            .margin({ top: 8 })
-          }
-          .alignItems(HorizontalAlign.Start)
-          .margin({ left: 12 })
+      // 内容层 - 通过固定 margin-top 避开状态栏和胶囊
+      Row() {
+        // 店铺图片
+        if (this.storeImage) {
+          Image(this.storeImage)
+            .width(80)
+            .height(80)
+            .borderRadius(6)
+            .objectFit(ImageFit.Cover)
+            .shadow({
+              radius: 4,
+              color: 'rgba(0, 0, 0, 0.15)',
+              offsetX: 0,
+              offsetY: 2
+            })
+        } else {
+          Image($r('app.media.startIcon'))
+            .width(80)
+            .height(80)
+            .borderRadius(6)
+            .objectFit(ImageFit.Cover)
         }
-        .width('100%')
-        .alignItems(VerticalAlign.Top)
+
+        // 店铺信息
+        Column() {
+          // 店铺名称
+          Text(this.storeName)
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+
+          // 状态标签行
+          Row() {
+            // 商家状态标签
+            if (this.storeStatus) {
+              Text(this.storeStatus)
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor('rgba(255, 255, 255, 0.9)')
+                .borderRadius(4)
+                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+            }
+
+            // 今日状态标签
+            if (this.todayStatus) {
+              Text(this.todayStatus)
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .backgroundColor('rgba(255, 255, 255, 0.9)')
+                .borderRadius(4)
+                .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+                .margin({ left: 6 })
+            }
+
+            // 关于商户按钮
+            Row() {
+              Text('關於商戶')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+              Text('\u24D8')
+                .fontSize(11)
+                .fontColor($r('app.color.text_secondary'))
+                .margin({ left: 2 })
+            }
+            .backgroundColor('rgba(255, 255, 255, 0.95)')
+            .borderRadius(4)
+            .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+            .border({ width: 1, color: '#E0E0E0' })
+            .margin({ left: 6 })
+            .onClick(() => {
+              this.showStoreInfo();
+            })
+          }
+          .margin({ top: 8 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .margin({ left: 12 })
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: this.statusBarHeight + 10, bottom: 24 })
+      .alignItems(VerticalAlign.Top)
+      .padding({ left: 16, right: 16, bottom: 10 })
+      .margin({ top: this.topAvoidHeight })
     }
     .width('100%')
-    .height(this.statusBarHeight + 130)
+    .height(this.topAvoidHeight + this.headerContentHeight - this.scrollOffset)
+    .borderRadius({ bottomLeft: 16, bottomRight: 16 })
+    .clip(true)
   }
 
   // 登录卡片
@@ -216,6 +259,9 @@ struct Index {
               .fontColor($r('app.color.text_hint'))
           }
           .margin({ top: 4 })
+          .onClick(() => {
+            this.openLoginPanel();
+          })
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
@@ -230,7 +276,7 @@ struct Index {
           .height(40)
           .width(100)
           .onClick(() => {
-            this.loginWithHuaweiID();
+            this.openLoginPanel();
           })
       }
       .width('100%')
@@ -433,93 +479,22 @@ struct Index {
     .margin({ top: 16 })
   }
 
-  // 自取图标 - 购物袋
+  // 自取图标 - 使用图片
   @Builder
   PickupIcon() {
-    Stack() {
-      // 袋子主体
-      Column()
-        .width(48)
-        .height(45)
-        .backgroundColor('transparent')
-        .border({ width: 3, color: '#333333' })
-        .borderRadius(6)
-        .position({ x: 6, y: 25 })
-      // 袋子提手 - 弧形
-      Column()
-        .width(28)
-        .height(18)
-        .backgroundColor('transparent')
-        .border({ width: 3, color: '#333333' })
-        .borderRadius({ topLeft: 14, topRight: 14 })
-        .position({ x: 16, y: 10 })
-      // 黄色条纹
-      Column()
-        .width(12)
-        .height(38)
-        .backgroundColor(this.themeColor)
-        .borderRadius(2)
-        .position({ x: 10, y: 29 })
-    }
-    .width(60)
-    .height(75)
+    Image($r('app.media.icon_pickup'))
+      .width(62)
+      .height(62)
+      .objectFit(ImageFit.Contain)
   }
 
-  // 堂食图标 - 餐盖
+  // 堂食图标 - 使用图片
   @Builder
   DineInIcon() {
-    Stack() {
-      // 盘子底座（黄色）
-      Column()
-        .width(58)
-        .height(8)
-        .backgroundColor(this.themeColor)
-        .borderRadius(2)
-        .position({ x: 1, y: 58 })
-      // 餐盖主体（半圆形）
-      Column()
-        .width(58)
-        .height(30)
-        .backgroundColor('transparent')
-        .border({ width: 3, color: '#333333' })
-        .borderRadius({ topLeft: 30, topRight: 30, bottomLeft: 2, bottomRight: 2 })
-        .position({ x: 1, y: 28 })
-      // 餐盖把手
-      Column()
-        .width(16)
-        .height(8)
-        .backgroundColor('transparent')
-        .border({ width: 3, color: '#333333' })
-        .borderRadius({ topLeft: 8, topRight: 8 })
-        .position({ x: 22, y: 22 })
-      // 蒸汽波浪线
-      Column() {
-        Text('~')
-          .fontSize(18)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Bold)
-      }
-      .position({ x: 10, y: 6 })
-      .rotate({ angle: 90 })
-      Column() {
-        Text('~')
-          .fontSize(20)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Bold)
-      }
-      .position({ x: 26, y: 3 })
-      .rotate({ angle: 90 })
-      Column() {
-        Text('~')
-          .fontSize(18)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Bold)
-      }
-      .position({ x: 42, y: 6 })
-      .rotate({ angle: 90 })
-    }
-    .width(60)
-    .height(75)
+    Image($r('app.media.icon_dinein'))
+      .width(62)
+      .height(62)
+      .objectFit(ImageFit.Contain)
   }
 
   // 页脚
@@ -539,27 +514,338 @@ struct Index {
     .padding({ top: 30, bottom: 20 })
   }
 
+  // 登录面板（底部弹出）
+  @Builder
+  LoginPanel() {
+    Column() {
+      // 顶部拖拽指示条
+      Column()
+        .width(40)
+        .height(4)
+        .backgroundColor('#E0E0E0')
+        .borderRadius(2)
+        .margin({ top: 12, bottom: 16 })
+
+      // 标签栏
+      Row() {
+        // 建立帳號或登入
+        Column() {
+          Text('建立帳號或登入')
+            .fontSize(16)
+            .fontWeight(this.loginPanelTab === 0 ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.loginPanelTab === 0 ? $r('app.color.text_primary') : $r('app.color.text_hint'))
+          // 下划线指示器
+          Column()
+            .width(80)
+            .height(2)
+            .backgroundColor(this.loginPanelTab === 0 ? this.themeColor : 'transparent')
+            .borderRadius(1)
+            .margin({ top: 8 })
+        }
+        .onClick(() => {
+          this.loginPanelTab = 0;
+        })
+
+        Blank().width(40)
+
+        // 更多優惠
+        Row() {
+          // 礼物图标
+          this.GiftIcon()
+          Text('更多優惠')
+            .fontSize(16)
+            .fontWeight(this.loginPanelTab === 1 ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.loginPanelTab === 1 ? $r('app.color.text_primary') : $r('app.color.text_hint'))
+            .margin({ left: 6 })
+        }
+        .onClick(() => {
+          this.loginPanelTab = 1;
+        })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .padding({ left: 20, right: 20 })
+
+      // 分隔线
+      Divider()
+        .color('#F0F0F0')
+        .width('100%')
+        .margin({ top: 12 })
+
+      if (this.loginPanelTab === 0) {
+        // 登录选项内容
+        this.LoginOptions()
+      } else {
+        // 更多優惠内容 - 未登录时显示登录提示，已登录时显示优惠活动
+        if (!this.isLoggedIn) {
+          this.LoginOptions()
+        } else {
+          // 已登录时显示优惠活动列表
+          Column() {
+            Text('暫無優惠活動')
+              .fontSize(15)
+              .fontColor($r('app.color.text_hint'))
+              .margin({ top: 60, bottom: 60 })
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+        }
+      }
+    }
+    .width('100%')
+    .backgroundColor('#FFFFFF')
+    .borderRadius({ topLeft: 16, topRight: 16 })
+    .transition(
+      TransitionEffect.translate({ y: 500 })
+        .animation({ duration: 300, curve: Curve.EaseOut })
+    )
+  }
+
+  // 礼物图标（更多优惠）
+  @Builder
+  GiftIcon() {
+    Stack() {
+      // 礼物盒主体
+      Column()
+        .width(14)
+        .height(10)
+        .backgroundColor(this.loginPanelTab === 1 ? this.themeColor : '#999999')
+        .borderRadius({ bottomLeft: 2, bottomRight: 2 })
+        .position({ x: 3, y: 10 })
+      // 礼物盒盖子
+      Column()
+        .width(18)
+        .height(5)
+        .backgroundColor(this.loginPanelTab === 1 ? this.themeColor : '#999999')
+        .borderRadius(2)
+        .position({ x: 1, y: 5 })
+      // 中间竖条装饰
+      Column()
+        .width(3)
+        .height(15)
+        .backgroundColor(this.loginPanelTab === 1 ? '#FFFFFF' : '#CCCCCC')
+        .position({ x: 8.5, y: 5 })
+      // 蝴蝶结左
+      Column()
+        .width(5)
+        .height(4)
+        .backgroundColor(this.loginPanelTab === 1 ? this.themeColor : '#999999')
+        .borderRadius({ topLeft: 4, bottomLeft: 4 })
+        .position({ x: 3, y: 1 })
+      // 蝴蝶结右
+      Column()
+        .width(5)
+        .height(4)
+        .backgroundColor(this.loginPanelTab === 1 ? this.themeColor : '#999999')
+        .borderRadius({ topRight: 4, bottomRight: 4 })
+        .position({ x: 12, y: 1 })
+    }
+    .width(20)
+    .height(20)
+  }
+
+  // 邮件图标 - 蓝色信封
+  @Builder
+  EmailIcon() {
+    Stack({ alignContent: Alignment.Center }) {
+      // 信封主体
+      Column()
+        .width(22)
+        .height(16)
+        .backgroundColor('transparent')
+        .border({ width: 2, color: '#4A90D9' })
+        .borderRadius(3)
+      // 信封V形折线
+      Column()
+        .width(12)
+        .height(2)
+        .backgroundColor('#4A90D9')
+        .position({ x: 5, y: 5 })
+        .rotate({ angle: 20, centerX: '0%', centerY: '50%' })
+      Column()
+        .width(12)
+        .height(2)
+        .backgroundColor('#4A90D9')
+        .position({ x: 5, y: 5 })
+        .rotate({ angle: -20, centerX: '100%', centerY: '50%' })
+    }
+    .width(24)
+    .height(24)
+  }
+
+  // Google图标 - 彩色G
+  @Builder
+  GoogleIcon() {
+    Stack({ alignContent: Alignment.Center }) {
+      // 白色圆形背景
+      Column()
+        .width(24)
+        .height(24)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(12)
+      // Google G字母 - 使用多色渐变效果的简化版
+      Text('G')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#EA4335') // Google红色
+    }
+    .width(24)
+    .height(24)
+  }
+
+  // Facebook图标 - 圆形蓝底白色f
+  @Builder
+  FacebookIcon() {
+    Stack({ alignContent: Alignment.Center }) {
+      // 蓝色圆形背景
+      Column()
+        .width(24)
+        .height(24)
+        .backgroundColor('#1877F2')
+        .borderRadius(12)
+      // Facebook f字母
+      Text('f')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFF')
+    }
+    .width(24)
+    .height(24)
+  }
+
+  // 登录选项（根据API配置动态显示）
+  @Builder
+  LoginOptions() {
+    Column() {
+      // 电邮登录按钮
+      if (this.loginConfig.email_register === 1) {
+        Button() {
+          Row() {
+            this.EmailIcon()
+            Text('使用電郵地址繼續')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ left: 12 })
+          }
+        }
+        .width('100%')
+        .height(48)
+        .backgroundColor('#FFFFFF')
+        .border({ width: 1, color: '#E0E0E0' })
+        .borderRadius(24)
+        .margin({ top: 20 })
+        .onClick(() => {
+          this.loginWithEmail();
+        })
+      }
+
+      // Google登录按钮
+      if (this.loginConfig.google_register === 1) {
+        Button() {
+          Row() {
+            this.GoogleIcon()
+            Text('使用谷歌帳戶繼續')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ left: 12 })
+          }
+        }
+        .width('100%')
+        .height(48)
+        .backgroundColor(this.themeColor)
+        .borderRadius(24)
+        .margin({ top: 12 })
+        .onClick(() => {
+          this.loginWithGoogle();
+        })
+      }
+
+      // Facebook登录按钮
+      if (this.loginConfig.facebook_register === 1) {
+        Button() {
+          Row() {
+            this.FacebookIcon()
+            Text('使用Facebook繼續')
+              .fontSize(15)
+              .fontColor('#FFFFFF')
+              .margin({ left: 12 })
+          }
+        }
+        .width('100%')
+        .height(48)
+        .backgroundColor('#1877F2')
+        .borderRadius(24)
+        .margin({ top: 12 })
+        .onClick(() => {
+          this.loginWithFacebook();
+        })
+      }
+
+      // 提示文字
+      Text('登入享更多優惠')
+        .fontSize(13)
+        .fontColor($r('app.color.text_hint'))
+        .margin({ top: 16 })
+
+      // 手机号登录（如果启用）
+      if (this.loginConfig.telephone_login === 1) {
+        // 分隔线 "或"
+        Row() {
+          Divider()
+            .color('#E0E0E0')
+            .layoutWeight(1)
+          Text('或')
+            .fontSize(13)
+            .fontColor($r('app.color.text_hint'))
+            .margin({ left: 16, right: 16 })
+          Divider()
+            .color('#E0E0E0')
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .margin({ top: 16 })
+
+        // 手机号登录按钮
+        Button() {
+          Text('手機號登入')
+            .fontSize(15)
+            .fontColor($r('app.color.text_primary'))
+        }
+        .width('100%')
+        .height(48)
+        .backgroundColor('#FFFFFF')
+        .border({ width: 1, color: '#E0E0E0' })
+        .borderRadius(24)
+        .margin({ top: 16 })
+        .onClick(() => {
+          this.loginWithPhone();
+        })
+      }
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, bottom: 40 })
+  }
+
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'Store home page loading...');
-    // 获取状态栏高度
-    this.getStatusBarHeight();
+    this.getTopAvoidHeight();
     this.loadStoreData();
   }
 
   /**
-   * 获取状态栏高度
+   * 获取顶部安全区域高度（状态栏+元服务胶囊）
    */
-  private getStatusBarHeight(): void {
+  private getTopAvoidHeight(): void {
     try {
-      const windowClass = window.getLastWindow(getContext(this));
-      windowClass.then((win) => {
+      window.getLastWindow(getContext(this)).then((win) => {
         const avoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-        this.statusBarHeight = px2vp(avoidArea.topRect.height);
-        hilog.info(DOMAIN, TAG, 'Status bar height: %{public}d', this.statusBarHeight);
+        const height = px2vp(avoidArea.topRect.height);
+        // 确保高度在合理范围内（元服务胶囊通常 40-80vp）
+        this.topAvoidHeight = Math.max(height, 100);
+        hilog.info(DOMAIN, TAG, 'Top avoid height: %{public}f', this.topAvoidHeight);
       });
     } catch (error) {
-      hilog.error(DOMAIN, TAG, 'Get status bar height error: %{public}s', JSON.stringify(error));
-      this.statusBarHeight = 40; // 默认值
+      hilog.error(DOMAIN, TAG, 'Get avoid height error: %{public}s', JSON.stringify(error));
     }
   }
 
@@ -619,6 +905,20 @@ struct Index {
     if (data.notice && data.notice.length > 0) {
       this.notices = data.notice.map(n => n.local_name);
     }
+
+    // 登录方式配置
+    if (config.login) {
+      this.loginConfig = {
+        telephone_login: config.login.telephone_login || 0,
+        telephone_register: config.login.telephone_register || 0,
+        google_register: config.login.google_register || 0,
+        facebook_register: config.login.facebook_register || 0,
+        email_register: config.login.email_register || 0
+      };
+      hilog.info(DOMAIN, TAG, 'Login config loaded: email=%{public}d, google=%{public}d, facebook=%{public}d, phone=%{public}d',
+        this.loginConfig.email_register, this.loginConfig.google_register,
+        this.loginConfig.facebook_register, this.loginConfig.telephone_login);
+    }
   }
 
   /**
@@ -642,11 +942,27 @@ struct Index {
   }
 
   /**
-   * 跳转到订单列表
+   * 跳转到订单列表（历史订单）
    */
   private goToOrders(): void {
     hilog.info(DOMAIN, TAG, 'Go to orders');
-    // TODO: 跳转到订单列表页
+    router.pushUrl({
+      url: 'pages/MenuPage',
+      params: {
+        orderType: OrderType.PICKUP,
+        themeColor: this.themeColor,
+        storeId: ApiConfig.DEFAULT_STORE_ID,
+        storeName: this.storeName,
+        storeImage: this.storeImage,
+        storeStatus: this.storeStatus,
+        todayStatus: this.todayStatus,
+        isOpen: this.isOpen,
+        notices: this.notices,
+        initialTab: 2  // 历史订单Tab
+      }
+    }).catch((err: Error) => {
+      hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
+    });
   }
 
   /**
@@ -654,7 +970,15 @@ struct Index {
    */
   private goToCoupons(): void {
     hilog.info(DOMAIN, TAG, 'Go to coupons');
-    // TODO: 跳转到优惠券列表页
+    router.pushUrl({
+      url: 'pages/CouponPage',
+      params: {
+        themeColor: this.themeColor,
+        isLoggedIn: this.isLoggedIn
+      }
+    }).catch((err: Error) => {
+      hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
+    });
   }
 
   /**
@@ -678,6 +1002,67 @@ struct Index {
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
     });
+  }
+
+  /**
+   * 打开登录面板
+   */
+  private openLoginPanel(): void {
+    animateTo({
+      duration: 300,
+      curve: Curve.EaseOut
+    }, () => {
+      this.showLoginPanel = true;
+      this.loginPanelTab = 0;
+    });
+  }
+
+  /**
+   * 关闭登录面板
+   */
+  private closeLoginPanel(): void {
+    animateTo({
+      duration: 200,
+      curve: Curve.EaseIn
+    }, () => {
+      this.showLoginPanel = false;
+    });
+  }
+
+  /**
+   * 电邮登录
+   */
+  private loginWithEmail(): void {
+    hilog.info(DOMAIN, TAG, 'Login with email');
+    // TODO: 跳转到电邮登录页面
+    this.closeLoginPanel();
+  }
+
+  /**
+   * Google登录
+   */
+  private loginWithGoogle(): void {
+    hilog.info(DOMAIN, TAG, 'Login with Google');
+    // TODO: 实现Google登录
+    this.closeLoginPanel();
+  }
+
+  /**
+   * Facebook登录
+   */
+  private loginWithFacebook(): void {
+    hilog.info(DOMAIN, TAG, 'Login with Facebook');
+    // TODO: 实现Facebook登录
+    this.closeLoginPanel();
+  }
+
+  /**
+   * 手机号登录
+   */
+  private loginWithPhone(): void {
+    hilog.info(DOMAIN, TAG, 'Login with phone');
+    // TODO: 跳转到手机号登录页面
+    this.closeLoginPanel();
   }
 
   /**

@@ -5,19 +5,36 @@ import {
   HomeData,
   ProductMenuData,
   MemberPlanData,
-  LoginResponse
+  LoginResponse,
+  OrderListData,
+  CouponListData,
+  ProductDetail,
+  PolicyGroupData
 } from '../models/StoreModels';
+import { cryptoFramework } from '@kit.CryptoArchitectureKit';
+import { buffer } from '@kit.ArkTS';
+import { AppConfig } from '../config/AppConfig';
+
+/**
+ * 游客Token响应
+ */
+interface GuestTokenData {
+  token: string;
+  customer_id: number;
+  telephone: string | null;
+  customer_type: number;
+}
 
 const DOMAIN = 0x0000;
 const TAG = 'ApiService';
 
 /**
- * API服务配置
+ * API服务配置（兼容旧代码，实际值来自 AppConfig）
  */
 export class ApiConfig {
-  static readonly BASE_URL: string = 'https://meal.pin2eat.com';
-  static readonly DEFAULT_STORE_ID: string = '1551';
-  static readonly DEFAULT_LANG: string = 'zh_HK';
+  static readonly BASE_URL: string = AppConfig.API_BASE_URL;
+  static readonly DEFAULT_STORE_ID: string = AppConfig.DEFAULT_STORE_ID;
+  static readonly DEFAULT_LANG: string = AppConfig.DEFAULT_LANG_CODE;
 }
 
 /**
@@ -30,6 +47,13 @@ class RequestParams {
   t?: string;
   page?: string;
   page_size?: string;
+  type?: string;           // 订单筛选类型
+  page_number?: string;    // 页码
+  page_limit?: string;     // 每页数量
+  product_id?: string;     // 产品ID
+  order_type?: string;     // 订单类型: 1=自取, 2=堂食
+  ts?: string;             // 时间戳
+  sign?: string;           // 签名
 }
 
 /**
@@ -140,6 +164,27 @@ export class ApiService {
     if (params.page_size) {
       parts.push(`page_size=${encodeURIComponent(params.page_size)}`);
     }
+    if (params.type !== undefined) {
+      parts.push(`type=${encodeURIComponent(params.type)}`);
+    }
+    if (params.page_number) {
+      parts.push(`page_number=${encodeURIComponent(params.page_number)}`);
+    }
+    if (params.page_limit) {
+      parts.push(`page_limit=${encodeURIComponent(params.page_limit)}`);
+    }
+    if (params.product_id) {
+      parts.push(`product_id=${encodeURIComponent(params.product_id)}`);
+    }
+    if (params.order_type) {
+      parts.push(`order_type=${encodeURIComponent(params.order_type)}`);
+    }
+    if (params.ts) {
+      parts.push(`ts=${encodeURIComponent(params.ts)}`);
+    }
+    if (params.sign) {
+      parts.push(`sign=${encodeURIComponent(params.sign)}`);
+    }
     return parts.join('&');
   }
 
@@ -157,28 +202,36 @@ export class ApiService {
       }
     }
 
+    const headers = this.getHeaders();
     hilog.info(DOMAIN, TAG, 'GET request: %{public}s', url);
+    hilog.info(DOMAIN, TAG, 'Headers: store-id=%{public}s, langcode=%{public}s',
+      headers['store-id'], headers['langcode']);
 
     try {
       const response = await httpRequest.request(url, {
         method: http.RequestMethod.GET,
-        header: this.getHeaders(),
+        header: headers,
         connectTimeout: 30000,
         readTimeout: 30000
       });
 
+      hilog.info(DOMAIN, TAG, 'HTTP responseCode: %{public}d', response.responseCode);
       httpRequest.destroy();
 
       if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<T>;
-        hilog.info(DOMAIN, TAG, 'GET success: code=%{public}d', result.code);
+        const resultStr = response.result as string;
+        hilog.info(DOMAIN, TAG, 'Response length: %{public}d', resultStr.length);
+        const result = JSON.parse(resultStr) as ApiResponse<T>;
+        hilog.info(DOMAIN, TAG, 'GET success: code=%{public}d, msg=%{public}s', result.code, result.msg);
         return result;
       } else {
+        hilog.error(DOMAIN, TAG, 'HTTP Error: %{public}d', response.responseCode);
         throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, 'GET error: %{public}s', JSON.stringify(error));
-      throw new ApiError(JSON.stringify(error));
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'GET error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
     }
   }
 
@@ -216,6 +269,75 @@ export class ApiService {
   }
 
   // ==================== 业务接口 ====================
+
+  /**
+   * 生成签名
+   * 签名算法: MD5(store_id=${store_id}&ts=${ts}&key=SECRET_KEY)
+   * 参数按字母顺序排序后拼接，最后追加密钥
+   */
+  private async generateSign(storeId: string, ts: string): Promise<string> {
+    try {
+      // 按字母顺序排列参数: store_id 在 ts 之前
+      // 拼接格式: store_id=xxx&ts=xxx&key=SECRET_KEY
+      const secretKey = 'a91f9568fbd23881c2b2c7fa9af5b12a';
+      const signStr = `store_id=${storeId}&ts=${ts}&key=${secretKey}`;
+      hilog.info(DOMAIN, TAG, 'Sign input: %{public}s', signStr);
+
+      // 使用 MD5 生成签名
+      const md5 = cryptoFramework.createMd('MD5');
+      await md5.update({ data: new Uint8Array(buffer.from(signStr, 'utf-8').buffer) });
+      const result = await md5.digest();
+
+      // 转换为十六进制字符串（大写）
+      const hexArr = Array.from(result.data);
+      const hexStr = hexArr.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+      return hexStr;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Generate sign error: %{public}s', JSON.stringify(error));
+      return '';
+    }
+  }
+
+  /**
+   * 获取游客Token
+   * GET /api/account/token
+   * 在应用启动时调用，获取游客身份token用于后续API请求
+   */
+  async getGuestToken(): Promise<boolean> {
+    try {
+      const ts = Date.now().toString();
+      const sign = await this.generateSign(this.storeId, ts);
+
+      const params = new RequestParams();
+      params.store_id = this.storeId;
+      params.ts = ts;
+      params.sign = sign;
+
+      hilog.info(DOMAIN, TAG, 'Getting guest token with sign: %{public}s', sign);
+
+      const response = await this.get<GuestTokenData>('/api/account/token', params);
+
+      if (response.code === 200 && response.data?.token) {
+        this.token = response.data.token;
+        hilog.info(DOMAIN, TAG, 'Guest token obtained, customer_id: %{public}d, type: %{public}d',
+          response.data.customer_id, response.data.customer_type);
+        return true;
+      } else {
+        hilog.error(DOMAIN, TAG, 'Failed to get guest token: %{public}s', response.msg);
+        return false;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Get guest token error: %{public}s', JSON.stringify(error));
+      return false;
+    }
+  }
+
+  /**
+   * 检查是否有有效token
+   */
+  hasToken(): boolean {
+    return this.token.length > 0;
+  }
 
   /**
    * 获取店铺首页数据
@@ -275,22 +397,88 @@ export class ApiService {
 
   /**
    * 获取用户订单列表
+   * GET /api/order/order-list-app
+   * @param filterType 筛选类型: '' | 'in_progress' | 'completed' | 'refund'
+   * @param pageNumber 页码（从1开始）
+   * @param pageLimit 每页数量
    */
-  async getOrders(page: number = 1, pageSize: number = 20): Promise<ApiResponse<object>> {
+  async getOrders(
+    filterType: string = '',
+    pageNumber: number = 1,
+    pageLimit: number = 10
+  ): Promise<ApiResponse<OrderListData>> {
     const params = new RequestParams();
     params.store_id = this.storeId;
-    params.page = page.toString();
-    params.page_size = pageSize.toString();
-    return this.get<object>('/api/order/list', params);
+    params.type = filterType;
+    params.page_number = pageNumber.toString();
+    params.page_limit = pageLimit.toString();
+    return this.get<OrderListData>('/api/order/order-list-app', params);
   }
 
   /**
    * 获取用户优惠券列表
    */
-  async getCoupons(): Promise<ApiResponse<object[]>> {
+  async getCoupons(): Promise<ApiResponse<CouponListData>> {
     const params = new RequestParams();
     params.store_id = this.storeId;
-    return this.get<object[]>('/api/coupon/list', params);
+    return this.get<CouponListData>('/api/coupon/list', params);
+  }
+
+  /**
+   * 获取产品详情
+   * GET /api/product/detail
+   * @param productId 产品ID
+   * @param orderType 订单类型: 1=自取, 2=堂食
+   */
+  async getProductDetail(productId: string, orderType: number = 1): Promise<ApiResponse<ProductDetail>> {
+    const params = new RequestParams();
+    params.product_id = productId;
+    params.order_type = orderType.toString();
+    return this.get<ProductDetail>('/api/product/detail', params);
+  }
+
+  /**
+   * 获取产品政策（加送選擇）
+   * GET /api/product/policy
+   * @param policyIds 政策ID数组
+   */
+  async getProductPolicy(policyIds: string[]): Promise<ApiResponse<PolicyGroupData[]>> {
+    if (policyIds.length === 0) {
+      return { code: 200, msg: '成功', data: [] };
+    }
+
+    const httpRequest = this.createHttpRequest();
+    // 构建URL: /api/product/policy?store_id=xxx&policies[]=id1&policies[]=id2
+    let url = `${ApiConfig.BASE_URL}/api/product/policy?store_id=${this.storeId}`;
+    for (const policyId of policyIds) {
+      url += `&policies[]=${encodeURIComponent(policyId)}`;
+    }
+
+    hilog.info(DOMAIN, TAG, 'GET policy request: %{public}s', url);
+
+    try {
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: this.getHeaders(),
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      httpRequest.destroy();
+
+      if (response.responseCode === 200) {
+        const result = JSON.parse(response.result as string) as ApiResponse<PolicyGroupData[]>;
+        hilog.info(DOMAIN, TAG, 'Policy success: code=%{public}d, count=%{public}d',
+          result.code, result.data?.length || 0);
+        return result;
+      } else {
+        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'Policy error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
+    }
   }
 }
 
