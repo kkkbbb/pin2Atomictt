@@ -9,7 +9,7 @@ export class AppConfig {
    * 默认店铺ID
    * 修改此值可切换默认店铺
    */
-  static readonly DEFAULT_STORE_ID: string = '5854';
+  static readonly DEFAULT_STORE_ID: string = '5849';
 
   // ==================== API配置 ====================
 

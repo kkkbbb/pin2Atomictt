@@ -8,7 +8,8 @@ import {
   OrderDetailStandard,
   OrderCondiment,
   PaymentMethod,
-  PayOrderParams
+  PayOrderParams,
+  PayMethodItem
 } from '../models/StoreModels';
 
 const DOMAIN = 0x0000;
@@ -30,15 +31,9 @@ struct OrderDetailPage {
   @State currencySymbol: string = '$';
   @State showPaymentWebView: boolean = false;
   @State paymentUrl: string = '';
+  @State paymentMethods: PayMethodItem[] = [];
+  @State isLoadingPayMethods: boolean = false;
   private webController: webview.WebviewController = new webview.WebviewController();
-
-  // 支付方式列表
-  private paymentMethods: PaymentMethod[] = [
-    { id: 'card', name: 'Visa and Mastercard', icon: '', payChannel: 1, payMethod: 'Card', payType: 'CARD' },
-    { id: 'alipay_hk', name: 'Alipay HK', icon: '', payChannel: 2, payMethod: 'AliPay', payType: 'ALIPAYHK' },
-    { id: 'alipay', name: '支付寶', icon: '', payChannel: 2, payMethod: 'AliPay', payType: 'ALIPAYCN' },
-    { id: 'counter', name: '櫃枱支付', icon: '', payChannel: 0, payMethod: 'Counter', payType: 'COUNTER' }
-  ];
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, Object>;
@@ -110,8 +105,9 @@ struct OrderDetailPage {
         this.orderTotal = parseFloat(response.data.total || '0');
         hilog.info(DOMAIN, TAG, 'Order detail loaded successfully');
 
-        // 如果是待支付状态，自动显示支付方式选择
+        // 如果是待支付状态，加载支付方式并自动显示支付方式选择
         if (response.data.status_id === '2') {
+          await this.loadPaymentMethods();
           this.showPaymentSheet = true;
           hilog.info(DOMAIN, TAG, 'Order pending payment, showing payment sheet');
         }
@@ -120,6 +116,21 @@ struct OrderDetailPage {
       hilog.error(DOMAIN, TAG, 'Load order detail error: %{public}s', JSON.stringify(error));
     }
     this.isLoading = false;
+  }
+
+  // 加载支付方式
+  async loadPaymentMethods(): Promise<void> {
+    this.isLoadingPayMethods = true;
+    try {
+      const response = await apiService.getPaymentMethods();
+      if (response.code === 200 && response.data) {
+        this.paymentMethods = response.data;
+        hilog.info(DOMAIN, TAG, 'Payment methods loaded: %{public}d', this.paymentMethods.length);
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Load payment methods error: %{public}s', JSON.stringify(error));
+    }
+    this.isLoadingPayMethods = false;
   }
 
   // 获取订单状态文本
@@ -144,13 +155,13 @@ struct OrderDetailPage {
     }
 
     // 找到选中的支付方式
-    const selectedMethod = this.paymentMethods.find(m => m.id === this.selectedPaymentMethod);
+    const selectedMethod = this.paymentMethods.find(m => m.pay_type === this.selectedPaymentMethod);
     if (!selectedMethod) {
       return;
     }
 
     // 柜台支付特殊处理
-    if (selectedMethod.id === 'counter') {
+    if (selectedMethod.pay_type === 'COUNTER') {
       promptAction.showToast({
         message: '請到櫃枱完成支付',
         duration: 2000
@@ -167,9 +178,9 @@ struct OrderDetailPage {
       const payParams: PayOrderParams = {
         order_id: this.orderId,
         total: this.orderTotal.toFixed(2),
-        pay_channel: selectedMethod.payChannel,
-        pay_method: selectedMethod.payMethod,
-        pay_type: selectedMethod.payType
+        pay_channel: parseInt(selectedMethod.pay_channel),
+        pay_method: selectedMethod.pay_method,
+        pay_type: selectedMethod.pay_type
       };
 
       hilog.info(DOMAIN, TAG, 'Pay order request: %{public}s', JSON.stringify(payParams));
@@ -524,7 +535,38 @@ struct OrderDetailPage {
 
       Divider().color('#F5F5F5').height(1).margin({ left: 16, right: 16, top: 8, bottom: 8 })
 
-      // 订单金额
+      // 折扣信息（如果有折扣）
+      if (this.orderDetail?.discount_total && parseFloat(this.orderDetail.discount_total) > 0) {
+        Row() {
+          Column() {
+            Text('外賣自取九折優惠')
+              .fontSize(14)
+              .fontColor('#FF6B00')
+              .fontWeight(FontWeight.Medium)
+            Text('10% OFF')
+              .fontSize(11)
+              .fontColor('#FF6B00')
+              .margin({ top: 2 })
+          }
+          .alignItems(HorizontalAlign.Start)
+
+          Blank()
+
+          Text('-' + this.currencySymbol + parseFloat(this.orderDetail.discount_total).toFixed(0))
+            .fontSize(14)
+            .fontColor('#FF6B00')
+            .fontWeight(FontWeight.Bold)
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        .backgroundColor('#FFF8F0')
+        .borderRadius(4)
+        .margin({ left: 16, right: 16, top: 8, bottom: 8 })
+
+        Divider().color('#F5F5F5').height(1).margin({ left: 16, right: 16, top: 8, bottom: 8 })
+      }
+
+      // 订单金额（折扣前）
       Row() {
         Text('訂單金額')
           .fontSize(14)
@@ -771,41 +813,66 @@ struct OrderDetailPage {
           .padding({ left: 20, right: 20, top: 20, bottom: 16 })
 
         // 支付方式列表
-        ForEach(this.paymentMethods, (method: PaymentMethod) => {
+        if (this.isLoadingPayMethods) {
           Row() {
-            // 图标背景
-            Text(this.getPaymentIcon(method.id))
-              .fontSize(18)
-              .width(44)
-              .height(44)
-              .textAlign(TextAlign.Center)
-              .backgroundColor('#F5F5F5')
-              .borderRadius(8)
-
-            // 名称
-            Text(method.name)
-              .fontSize(15)
-              .fontColor('#333333')
-              .margin({ left: 12 })
-              .layoutWeight(1)
-
-            // 选中状态
-            if (this.selectedPaymentMethod === method.id) {
-              Text('●')
-                .fontSize(20)
-                .fontColor(this.themeColor)
-            } else {
-              Text('○')
-                .fontSize(20)
-                .fontColor('#CCCCCC')
-            }
+            LoadingProgress()
+              .width(20)
+              .height(20)
+              .color(this.themeColor)
+            Text('載入支付方式...')
+              .fontSize(14)
+              .fontColor('#999999')
+              .margin({ left: 8 })
           }
           .width('100%')
-          .padding({ left: 20, right: 20, top: 12, bottom: 12 })
-          .onClick(() => {
-            this.selectedPaymentMethod = method.id;
+          .justifyContent(FlexAlign.Center)
+          .padding({ top: 20, bottom: 20 })
+        } else {
+          ForEach(this.paymentMethods, (method: PayMethodItem) => {
+            Row() {
+              // 图标
+              if (method.pay_icon) {
+                Image(method.pay_icon)
+                  .width(44)
+                  .height(44)
+                  .borderRadius(8)
+                  .objectFit(ImageFit.Contain)
+                  .backgroundColor('#F5F5F5')
+              } else {
+                Text(this.getPaymentIcon(method.pay_type))
+                  .fontSize(18)
+                  .width(44)
+                  .height(44)
+                  .textAlign(TextAlign.Center)
+                  .backgroundColor('#F5F5F5')
+                  .borderRadius(8)
+              }
+
+              // 名称
+              Text(method.pay_name)
+                .fontSize(15)
+                .fontColor('#333333')
+                .margin({ left: 12 })
+                .layoutWeight(1)
+
+              // 选中状态
+              if (this.selectedPaymentMethod === method.pay_type) {
+                Text('●')
+                  .fontSize(20)
+                  .fontColor(this.themeColor)
+              } else {
+                Text('○')
+                  .fontSize(20)
+                  .fontColor('#CCCCCC')
+              }
+            }
+            .width('100%')
+            .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+            .onClick(() => {
+              this.selectedPaymentMethod = method.pay_type;
+            })
           })
-        })
+        }
 
         // 确认按钮
         Row() {
@@ -846,19 +913,24 @@ struct OrderDetailPage {
     .height('100%')
   }
 
-  // 获取支付图标
-  getPaymentIcon(methodId: string): string {
-    switch (methodId) {
-      case 'card':
+  // 获取支付图标（备用文字图标）
+  getPaymentIcon(payType: string): string {
+    switch (payType) {
+      case 'CARD':
         return 'Card';
-      case 'alipay_hk':
+      case 'ALIPAYHK':
         return 'APHK';
-      case 'alipay':
+      case 'ALIPAYCN':
         return 'AliP';
-      case 'counter':
+      case 'WXPAYCN':
+      case 'WXPAYHK':
+        return 'WX';
+      case 'OCTOPUS':
+        return '八達';
+      case 'COUNTER':
         return 'Cash';
       default:
-        return '';
+        return payType.substring(0, 4);
     }
   }
 

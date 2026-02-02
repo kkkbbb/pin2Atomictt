@@ -44,6 +44,9 @@ export interface StoreConfig {
   seat_fee: string;
   has_seat_fee: number;
   login?: LoginConfig;  // 登录方式配置
+  has_discount?: number;  // 是否有折扣: 1=有, 0=无
+  discount?: number;      // 折扣百分比
+  extend?: StoreExtend;   // 扩展配置
 }
 
 /**
@@ -88,6 +91,44 @@ export interface BusinessSchedule {
   day: number;
   start_time: string;
   end_time: string;
+}
+
+/**
+ * 折扣扩展信息
+ */
+export interface OrderAdjustExt {
+  ratio?: number;       // 折扣率（type=1时，如0.9表示九折）
+  number?: number;      // 固定金额（type=2时）
+}
+
+/**
+ * 折扣调整项
+ */
+export interface OrderAdjustItem {
+  id: number;
+  name: string;
+  type: number;           // 1=百分比折扣, 2=固定金额调整
+  ext: OrderAdjustExt;
+  object_type?: number;
+}
+
+/**
+ * 订单折扣配置
+ */
+export interface OrderAdjustAmount {
+  time: string;
+  data: OrderAdjustItem[];
+}
+
+/**
+ * 店铺扩展配置
+ */
+export interface StoreExtend {
+  id: number;
+  update_time: string;
+  store_id: number;
+  order_adjust_amount?: OrderAdjustAmount;  // 订单折扣配置
+  product_adjust_amount?: OrderAdjustAmount;  // 商品折扣配置
 }
 
 /**
@@ -171,6 +212,7 @@ export interface Product {
   description: ProductDescription;
   prices: ProductPrice[];
   condiment_group: CondimentGroupDetail[];  // 配料选择（甜度、冰量等）
+  box?: ProductBox;                         // 外卖盒（餐盒费）
 }
 
 /**
@@ -939,7 +981,7 @@ export interface OrderDetailData {
 // ==================== 支付相关模型 ====================
 
 /**
- * 支付方式配置
+ * 支付方式配置（本地使用）
  */
 export interface PaymentMethod {
   id: string;
@@ -948,6 +990,19 @@ export interface PaymentMethod {
   payChannel: number;
   payMethod: string;
   payType: string;
+}
+
+/**
+ * 支付方式（API返回）
+ * GET /api/payment/pay-method?store_id=xxx
+ */
+export interface PayMethodItem {
+  pay_channel: string;      // 支付渠道ID: "1"=微信, "2"=支付宝, "13"=八达通
+  pay_method: string;       // 支付方法: "WechatPay", "AliPay", "OctopusPay"
+  pay_name: string;         // 显示名称: "微信支付", "Alipay HK"
+  pay_type: string;         // 支付类型: "WXPAYCN", "ALIPAYHK", "OCTOPUS"
+  pay_icon: string;         // 图标URL
+  discount: object[];       // 折扣信息
 }
 
 /**
@@ -996,4 +1051,60 @@ export interface SchemeStoresData {
   is_scheme_menu: string;
   flagship: string;
   stores: SchemeStore[];
+}
+
+// ==================== 弹窗相关模型 ====================
+
+/**
+ * 弹窗显示页面配置
+ */
+export interface PopShowPage {
+  home_page: number;              // 首页
+  dinein_home_page: number;       // 堂食首页
+  takeout_home_page: number;      // 自取首页
+  delivery_home_page: number;     // 配送首页
+  courier_home_page: number;      // 快递首页
+}
+
+/**
+ * 弹窗显示平台配置
+ */
+export interface PopShowPlat {
+  h5: number;                     // H5平台
+  mini_app: number;               // 小程序
+}
+
+/**
+ * 弹窗显示频率配置
+ */
+export interface PopShowFrequency {
+  days: number;                   // 每隔多少天显示一次（0=每次都显示）
+  nums: number;                   // 每次访问显示次数（0=不限制）
+}
+
+/**
+ * 店铺弹窗信息
+ */
+export interface StorePop {
+  pop_id: string;
+  store_id: string;
+  type: string;                   // 弹窗类型
+  status: string;                 // 状态: "1"=启用
+  name: string;                   // 弹窗名称
+  brief?: string;
+  brief_cn?: string;
+  brief_en?: string;
+  brief_local?: string;
+  image_url: string;              // 弹窗图片URL
+  link_url: string;               // 点击跳转链接
+  store_noticy?: string | null;
+  store_noticy_cn?: string;
+  store_noticy_en?: string | null;
+  store_noticy_local?: string | null;
+  show_page: PopShowPage;         // 显示页面配置
+  show_plat: PopShowPlat;         // 显示平台配置
+  show_frequency: PopShowFrequency; // 显示频率配置
+  start_date: string;             // 开始日期
+  end_date: string;               // 结束日期
+  sort: string;                   // 排序
 }

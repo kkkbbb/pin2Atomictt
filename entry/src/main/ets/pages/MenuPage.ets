@@ -69,6 +69,10 @@ struct MenuPage {
   @State orderType: OrderType = OrderType.PICKUP;
   @State themeColor: string = '#FFD700';
   @State currencySymbol: string = '$';
+  // 折扣信息
+  @State hasDiscount: boolean = false;           // 是否有折扣
+  @State discountRatio: number = 1;              // 折扣率（0.9 = 九折）
+  @State discountLabel: string = '';             // 折扣标签文本（从API获取）
 
   // 店铺信息状态
   @State storeName: string = '';
@@ -114,6 +118,7 @@ struct MenuPage {
   @State selectedProductGroupId: string = '';
 
   // 购物车状态
+  @State cartItems: CartItem[] = [];                  // 购物车商品列表
   @State cartCount: number = 0;                       // 购物车商品数量
   @State cartTotal: number = 0;                       // 购物车总价
   @State showCartPopup: boolean = false;              // 购物车弹窗是否显示
@@ -717,24 +722,45 @@ struct MenuPage {
             .margin({ top: 6 })
         }
 
-        // 价格
+        // 价格（显示优惠价和原价）
         Row() {
+          // 优惠价（红色）
           Text(this.currencySymbol)
             .fontSize(14)
-            .fontColor('#C4A000')
-          Text(this.getPrice(product))
+            .fontColor('#FF6B6B')
+          Text(this.getDiscountPrice(product))
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#C4A000')
+            .fontColor('#FF6B6B')
           if (this.hasMultipleSpecs(product)) {
             Text('起')
               .fontSize(12)
-              .fontColor('#C4A000')
+              .fontColor('#FF6B6B')
               .margin({ left: 2 })
+          }
+
+          // 原价（删除线，灰色）
+          if (this.hasDiscount) {
+            Text(` ${this.currencySymbol}${this.getPrice(product)}`)
+              .fontSize(14)
+              .fontColor('#999999')
+              .decoration({ type: TextDecorationType.LineThrough })
+              .margin({ left: 6 })
           }
         }
         .margin({ top: 8 })
         .alignItems(VerticalAlign.Bottom)
+
+        // 优惠标签
+        if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+          Text(this.getDiscountLabel())
+            .fontSize(11)
+            .fontColor('#FFFFFF')
+            .backgroundColor('#FF6B6B')
+            .borderRadius(3)
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .margin({ top: 6 })
+        }
       }
       .width('100%')
       .padding(12)
@@ -780,22 +806,46 @@ struct MenuPage {
 
         Blank()
 
-        // 价格行
-        Row() {
-          Text(this.currencySymbol)
-            .fontSize(13)
-            .fontColor('#C4A000')
-          Text(this.getPrice(product))
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#C4A000')
-          if (this.hasMultipleSpecs(product)) {
-            Text(' 起')
-              .fontSize(11)
-              .fontColor('#C4A000')
+        // 价格行（显示优惠价和原价）
+        Column() {
+          Row() {
+            // 优惠价（红色）
+            Text(this.currencySymbol)
+              .fontSize(13)
+              .fontColor('#FF6B6B')
+            Text(this.getDiscountPrice(product))
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FF6B6B')
+            if (this.hasMultipleSpecs(product)) {
+              Text(' 起')
+                .fontSize(11)
+                .fontColor('#FF6B6B')
+            }
+
+            // 原价（删除线，灰色）
+            if (this.hasDiscount) {
+              Text(` ${this.currencySymbol}${this.getPrice(product)}`)
+                .fontSize(12)
+                .fontColor('#999999')
+                .decoration({ type: TextDecorationType.LineThrough })
+                .margin({ left: 4 })
+            }
+          }
+          .alignItems(VerticalAlign.Bottom)
+
+          // 优惠标签
+          if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+            Text(this.getDiscountLabel())
+              .fontSize(10)
+              .fontColor('#FFFFFF')
+              .backgroundColor('#FF6B6B')
+              .borderRadius(3)
+              .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+              .margin({ top: 4 })
           }
         }
-        .alignItems(VerticalAlign.Bottom)
+        .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
       .height(70)
@@ -1301,14 +1351,25 @@ struct MenuPage {
           Row() {
             // 价格信息
             Column() {
+              // 优惠价格行
               Row() {
+                // 优惠价（红色）
                 Text(this.currencySymbol)
                   .fontSize(14)
-                  .fontColor('#C4A000')
-                Text(this.calculateTotalPrice())
+                  .fontColor('#FF6B6B')
+                Text(this.calculateDiscountTotalPrice())
                   .fontSize(22)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor('#C4A000')
+                  .fontColor('#FF6B6B')
+
+                // 原价（删除线，灰色）
+                if (this.hasDiscount) {
+                  Text(` ${this.currencySymbol}${this.calculateTotalPrice()}`)
+                    .fontSize(16)
+                    .fontColor('#999999')
+                    .decoration({ type: TextDecorationType.LineThrough })
+                    .margin({ left: 6 })
+                }
               }
               .alignItems(VerticalAlign.Bottom)
 
@@ -2031,15 +2092,27 @@ struct MenuPage {
         this.showCartPopup = !this.showCartPopup;
       })
 
-      // 总数金额
+      // 总数金额（显示优惠价和原价）
       Row() {
         Text('總數')
           .fontSize(14)
           .fontColor('#333333')
-        Text(` ${this.currencySymbol}${this.cartTotal.toFixed(0)}`)
+          .margin({ right: 4 })
+
+        // 优惠后总价
+        Text(`${this.currencySymbol}${this.getCartDiscountTotal().toFixed(0)}`)
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor('#333333')
+
+        // 原价（删除线）
+        if (this.hasDiscount) {
+          Text(` ${this.currencySymbol}${this.cartTotal.toFixed(0)}`)
+            .fontSize(14)
+            .fontColor('#666666')
+            .decoration({ type: TextDecorationType.LineThrough })
+            .margin({ left: 4 })
+        }
       }
       .layoutWeight(1)
       .justifyContent(FlexAlign.Start)
@@ -2115,11 +2188,11 @@ struct MenuPage {
 
         // 购物车商品列表
         List() {
-          ForEach(appState.cartItems, (item: CartItem) => {
+          ForEach(this.cartItems, (item: CartItem) => {
             ListItem() {
               this.CartItemRow(item)
             }
-          })
+          }, (item: CartItem) => item.cartItemId)
         }
         .width('100%')
         .constraintSize({ maxHeight: 300 })
@@ -2426,6 +2499,16 @@ struct MenuPage {
       if (params['initialTab'] !== undefined) {
         this.currentTab = params['initialTab'] as number;
       }
+      // 折扣信息
+      if (params['hasDiscount'] !== undefined) {
+        this.hasDiscount = params['hasDiscount'] as boolean;
+      }
+      if (params['discountRatio'] !== undefined) {
+        this.discountRatio = params['discountRatio'] as number;
+      }
+      if (params['discountLabel']) {
+        this.discountLabel = params['discountLabel'] as string;
+      }
     }
 
     // 如果没有从路由获取到店铺信息，则加载
@@ -2484,6 +2567,25 @@ struct MenuPage {
 
     if (data.notice && data.notice.length > 0) {
       this.notices = data.notice.map(n => n.local_name);
+    }
+
+    // 解析折扣信息
+    if (config.extend?.product_adjust_amount?.data && config.extend.product_adjust_amount.data.length > 0) {
+      // 从 product_adjust_amount 中获取折扣
+      const adjustItem = config.extend.product_adjust_amount.data[0];
+      if (adjustItem.type === 1 && adjustItem.ext?.ratio) {
+        // type=1 表示百分比折扣
+        this.hasDiscount = true;
+        this.discountRatio = adjustItem.ext.ratio;
+        this.discountLabel = adjustItem.name || '';
+        hilog.info(DOMAIN, TAG, 'Discount enabled: %{public}f, label: %{public}s',
+          this.discountRatio, this.discountLabel);
+      }
+    } else if (config.has_discount === 1 && config.discount) {
+      // 从 has_discount 和 discount 字段获取折扣
+      this.hasDiscount = true;
+      this.discountRatio = config.discount / 100;
+      hilog.info(DOMAIN, TAG, 'Discount enabled (legacy): %{public}f', this.discountRatio);
     }
   }
 
@@ -2582,6 +2684,55 @@ struct MenuPage {
   }
 
   /**
+   * 获取产品优惠价格（格式化为小数点后1位）
+   */
+  private getDiscountPrice(product: Product): string {
+    const originalPrice = parseFloat(this.getPrice(product));
+    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+      const discountPrice = originalPrice * this.discountRatio;
+      return discountPrice.toFixed(1);
+    }
+    return originalPrice.toFixed(0);
+  }
+
+  /**
+   * 获取折扣标签文字
+   */
+  private getDiscountLabel(): string {
+    if (this.orderType === OrderType.PICKUP && this.hasDiscount) {
+      // 优先使用API提供的标签文本
+      if (this.discountLabel) {
+        return `外賣自取${this.discountLabel}`;
+      }
+      // Fallback: 根据折扣率生成标签
+      const discount = Math.round((1 - this.discountRatio) * 10);
+      return `外賣自取${10 - discount}折優惠`;
+    }
+    return '';
+  }
+
+  /**
+   * 计算购物车折扣后总价
+   */
+  private getCartDiscountTotal(): number {
+    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+      return this.cartTotal * this.discountRatio;
+    }
+    return this.cartTotal;
+  }
+
+  /**
+   * 计算商品详情页折扣后总价（字符串格式）
+   */
+  private calculateDiscountTotalPrice(): string {
+    const originalTotal = parseFloat(this.calculateTotalPrice());
+    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+      return (originalTotal * this.discountRatio).toFixed(0);
+    }
+    return originalTotal.toFixed(0);
+  }
+
+  /**
    * 计算分组在产品列表中的起始索引
    */
   private getProductListIndexForGroup(groupIndex: number): number {
@@ -2647,13 +2798,19 @@ struct MenuPage {
 
       const response = await apiService.getProductDetail(productId, orderType);
       if (response.code === 200 && response.data) {
+        // 保留菜单数据中的 box 字段（商品详情 API 可能不返回 box）
+        const existingBox = this.selectedProduct?.box;
         this.selectedProduct = response.data;
-        hilog.info(DOMAIN, TAG, 'Product detail from API: %{public}s, prices: %{public}d, packageGroups: %{public}d, policies: %{public}d, condiment_groups: %{public}d',
+        if (!this.selectedProduct.box && existingBox) {
+          this.selectedProduct.box = existingBox;
+        }
+        hilog.info(DOMAIN, TAG, 'Product detail from API: %{public}s, prices: %{public}d, packageGroups: %{public}d, policies: %{public}d, condiment_groups: %{public}d, box: %{public}s',
           response.data.local_name,
           response.data.prices?.length || 0,
           response.data.packageGroups?.length || 0,
           response.data.policy?.length || 0,
-          response.data.condiment_group?.length || 0);
+          response.data.condiment_group?.length || 0,
+          this.selectedProduct.box ? 'yes' : 'no');
 
         // 初始化主商品配料的默认选择
         this.initProductCondimentDefaults(response.data);
@@ -2726,7 +2883,8 @@ struct MenuPage {
       prices: product.prices || [],
       packageGroups: [],  // 菜单数据没有packageGroups，使用空数组
       policy: [],
-      condiment_group: product.condiment_group
+      condiment_group: product.condiment_group,
+      box: product.box  // 复制餐盒费信息
     };
   }
 
@@ -3289,6 +3447,7 @@ struct MenuPage {
    * 更新购物车状态
    */
   private updateCartState(): void {
+    this.cartItems = appState.cartItems.slice();
     this.cartCount = appState.cartCount;
     this.cartTotal = appState.cartTotal;
   }

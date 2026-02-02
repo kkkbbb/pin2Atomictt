@@ -2,8 +2,9 @@ import { authentication } from '@kit.AccountKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { apiService, ApiConfig } from '../services/ApiService';
-import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan, SchemeStore } from '../models/StoreModels';
+import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan, SchemeStore, StorePop } from '../models/StoreModels';
 import { router, window } from '@kit.ArkUI';
+import { preferences } from '@kit.ArkData';
 
 const DOMAIN = 0x0000;
 const TAG = 'StoreHome';
@@ -53,13 +54,22 @@ struct Index {
   @State showStoreSelectPanel: boolean = false;
   // 门店列表
   @State storeList: SchemeStore[] = [];
-  // 当前选中的门店ID
-  @State selectedStoreId: number = 0;
+  // 当前选中的门店ID（初始化为默认门店）
+  @State selectedStoreId: string = ApiConfig.DEFAULT_STORE_ID;
   // scheme_id（连锁品牌ID）
   private schemeId: string = '';
+  // 弹窗相关状态
+  @State showPopupDialog: boolean = false;
+  @State currentPop: StorePop | null = null;
+  // 折扣信息
+  @State hasDiscount: boolean = false;
+  @State discountRatio: number = 1;
+  @State discountLabel: string = '';
 
   // 店铺完整数据
   private homeData: HomeData | null = null;
+  // 用户偏好存储
+  private dataPreferences: preferences.Preferences | null = null;
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
@@ -162,6 +172,22 @@ struct Index {
       // 门店选择弹窗
       if (this.showStoreSelectPanel) {
         this.StoreSelectPanel()
+      }
+
+      // 首页弹窗遮罩层
+      if (this.showPopupDialog && this.currentPop) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0.6)')
+          .onClick(() => {
+            this.closePopupDialog();
+          })
+      }
+
+      // 首页弹窗
+      if (this.showPopupDialog && this.currentPop) {
+        this.PopupDialog()
       }
     }
     .width('100%')
@@ -624,77 +650,22 @@ struct Index {
     })
   }
 
-  // 订单图标 - 文档样式
+  // 订单图标
   @Builder
   OrderIcon() {
-    Stack() {
-      // 文档外框
-      Column()
-        .width(20)
-        .height(24)
-        .borderRadius(3)
-        .border({ width: 2, color: this.themeColor })
-      // 文档内横线
-      Column() {
-        Column()
-          .width(10)
-          .height(2)
-          .backgroundColor(this.themeColor)
-          .borderRadius(1)
-        Column()
-          .width(10)
-          .height(2)
-          .backgroundColor(this.themeColor)
-          .borderRadius(1)
-          .margin({ top: 3 })
-        Column()
-          .width(10)
-          .height(2)
-          .backgroundColor(this.themeColor)
-          .borderRadius(1)
-          .margin({ top: 3 })
-      }
-      .justifyContent(FlexAlign.Center)
-    }
-    .width(24)
-    .height(24)
+    Image($r('app.media.icon_orders'))
+      .width(24)
+      .height(24)
+      .objectFit(ImageFit.Contain)
   }
 
-  // 优惠图标 - 票券样式
+  // 优惠图标
   @Builder
   CouponIcon() {
-    Stack() {
-      // 左半票券
-      Column()
-        .width(9)
-        .height(18)
-        .backgroundColor(this.themeColor)
-        .borderRadius({ topLeft: 3, bottomLeft: 3 })
-        .position({ x: 0, y: 3 })
-      // 右半票券
-      Column()
-        .width(9)
-        .height(18)
-        .backgroundColor(this.themeColor)
-        .borderRadius({ topRight: 3, bottomRight: 3 })
-        .position({ x: 15, y: 3 })
-      // 中间锯齿上
-      Column()
-        .width(6)
-        .height(6)
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(3)
-        .position({ x: 9, y: 0 })
-      // 中间锯齿下
-      Column()
-        .width(6)
-        .height(6)
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(3)
-        .position({ x: 9, y: 18 })
-    }
-    .width(24)
-    .height(24)
+    Image($r('app.media.icon_coupons'))
+      .width(24)
+      .height(24)
+      .objectFit(ImageFit.Contain)
   }
 
   // 服务选择区域
@@ -1477,7 +1448,7 @@ struct Index {
         .width('100%')
         .margin({ top: 16 })
 
-      // 门店列表
+      // 门店列表 - 自适应内容高度
       Scroll() {
         Column() {
           ForEach(this.storeList, (store: SchemeStore) => {
@@ -1487,11 +1458,14 @@ struct Index {
         .width('100%')
       }
       .width('100%')
-      .layoutWeight(1)
+      .constraintSize({ maxHeight: '50%' })
       .scrollBar(BarState.Off)
+
+      // 底部安全边距
+      Column()
+        .height(20)
     }
     .width('100%')
-    .height('50%')
     .backgroundColor('#FFFFFF')
     .borderRadius({ topLeft: 16, topRight: 16 })
     .transition(
@@ -1529,7 +1503,7 @@ struct Index {
       .margin({ left: 12 })
 
       // 选中指示器
-      if (store.store_id === this.selectedStoreId) {
+      if (store.store_id.toString() === this.selectedStoreId) {
         Column()
           .width(20)
           .height(20)
@@ -1545,15 +1519,63 @@ struct Index {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 16, bottom: 16 })
-    .backgroundColor(store.store_id === this.selectedStoreId ? '#FFF9E6' : '#FFFFFF')
+    .backgroundColor(store.store_id.toString() === this.selectedStoreId ? '#FFF9E6' : '#FFFFFF')
     .onClick(() => {
       this.selectStore(store);
     })
   }
 
+  // 首页弹窗
+  @Builder
+  PopupDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      // 弹窗容器 - 居中显示
+      Column() {
+        // 弹窗图片
+        if (this.currentPop && this.currentPop.image_url) {
+          Image(this.currentPop.image_url)
+            .width('85%')
+            .constraintSize({ maxHeight: '70%' })
+            .objectFit(ImageFit.Contain)
+            .borderRadius(12)
+            .onClick(() => {
+              this.handlePopupClick();
+            })
+        }
+
+        // 关闭按钮 - 位于图片下方
+        Column() {
+          Text('✕')
+            .fontSize(28)
+            .fontColor('#FFFFFF')
+            .fontWeight(FontWeight.Bold)
+        }
+        .width(50)
+        .height(50)
+        .backgroundColor('rgba(0, 0, 0, 0.6)')
+        .borderRadius(25)
+        .justifyContent(FlexAlign.Center)
+        .margin({ top: 20 })
+        .onClick(() => {
+          this.closePopupDialog();
+        })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+    }
+    .width('100%')
+    .height('100%')
+    .transition(
+      TransitionEffect.OPACITY
+        .animation({ duration: 300, curve: Curve.EaseOut })
+    )
+  }
+
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'Store home page loading...');
     this.getTopAvoidHeight();
+    this.initPreferences();
     this.loadStoreData();
   }
 
@@ -1579,8 +1601,8 @@ struct Index {
    */
   private async loadStoreData(): Promise<void> {
     try {
-      // 设置店铺ID（可从路由参数获取）
-      apiService.setStoreId(ApiConfig.DEFAULT_STORE_ID);
+      // 设置店铺ID（使用当前选中的门店）
+      apiService.setStoreId(this.selectedStoreId);
 
       // 获取首页数据
       const homeResponse = await apiService.getHomeData();
@@ -1597,6 +1619,11 @@ struct Index {
 
       // 获取会员计划
       this.loadMemberPlan();
+
+      // 加载弹窗（延迟500ms，等待页面渲染完成）
+      setTimeout(() => {
+        this.loadStorePops();
+      }, 500);
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Error loading store data: %{public}s', JSON.stringify(error));
       this.setDefaultData();
@@ -1641,8 +1668,6 @@ struct Index {
       const response = await apiService.getSchemeStores(this.schemeId);
       if (response.code === 200 && response.data?.stores) {
         this.storeList = response.data.stores;
-        // 设置当前选中的门店
-        this.selectedStoreId = parseInt(ApiConfig.DEFAULT_STORE_ID);
         hilog.info(DOMAIN, TAG, 'Scheme stores loaded: %{public}d stores', this.storeList.length);
       }
     } catch (error) {
@@ -1681,26 +1706,24 @@ struct Index {
    * 选择门店
    */
   private selectStore(store: SchemeStore): void {
-    if (store.store_id === this.selectedStoreId) {
+    const storeIdStr = store.store_id.toString();
+    if (storeIdStr === this.selectedStoreId) {
       // 已选中，直接关闭
       this.closeStoreSelectPanel();
       return;
     }
 
-    hilog.info(DOMAIN, TAG, 'Switching to store: %{public}d - %{public}s',
-      store.store_id, store.local_name || store.name);
+    hilog.info(DOMAIN, TAG, 'Switching to store: %{public}s - %{public}s',
+      storeIdStr, store.local_name || store.name);
 
     // 更新选中状态
-    this.selectedStoreId = store.store_id;
+    this.selectedStoreId = storeIdStr;
 
     // 关闭弹窗
     this.closeStoreSelectPanel();
 
-    // 切换门店：重新设置 store_id 并刷新数据
+    // 切换门店：重新加载首页数据
     this.isLoading = true;
-    apiService.setStoreId(store.store_id.toString());
-
-    // 重新加载首页数据
     this.loadStoreData();
   }
 
@@ -1778,9 +1801,26 @@ struct Index {
       this.hasMultipleStores = true;
       this.schemeId = data.scheme_stores.scheme_id;
       this.storeList = data.scheme_stores.stores || [];
-      this.selectedStoreId = parseInt(ApiConfig.DEFAULT_STORE_ID);
       hilog.info(DOMAIN, TAG, 'Scheme stores loaded from home: scheme_id=%{public}s, stores=%{public}d',
         this.schemeId, this.storeList.length);
+    }
+
+    // 折扣信息 - 优先从 product_adjust_amount 获取
+    if (config.extend?.product_adjust_amount?.data && config.extend.product_adjust_amount.data.length > 0) {
+      const adjustItem = config.extend.product_adjust_amount.data[0];
+      if (adjustItem.type === 1 && adjustItem.ext?.ratio) {
+        // type=1 表示百分比折扣
+        this.hasDiscount = true;
+        this.discountRatio = adjustItem.ext.ratio;
+        this.discountLabel = adjustItem.name || '';
+        hilog.info(DOMAIN, TAG, 'Discount enabled from extend: %{public}f, label: %{public}s',
+          this.discountRatio, this.discountLabel);
+      }
+    } else if (config.has_discount === 1 && config.discount) {
+      // 从 has_discount 和 discount 字段获取折扣（旧版API）
+      this.hasDiscount = true;
+      this.discountRatio = config.discount / 100;
+      hilog.info(DOMAIN, TAG, 'Discount enabled (legacy): %{public}f', this.discountRatio);
     }
   }
 
@@ -1821,7 +1861,10 @@ struct Index {
         todayStatus: this.todayStatus,
         isOpen: this.isOpen,
         notices: this.notices,
-        initialTab: 2  // 历史订单Tab
+        initialTab: 2,  // 历史订单Tab
+        hasDiscount: this.hasDiscount,
+        discountRatio: this.discountRatio,
+        discountLabel: this.discountLabel
       }
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
@@ -1860,7 +1903,10 @@ struct Index {
         storeStatus: this.storeStatus,
         todayStatus: this.todayStatus,
         isOpen: this.isOpen,
-        notices: this.notices
+        notices: this.notices,
+        hasDiscount: this.hasDiscount,
+        discountRatio: this.discountRatio,
+        discountLabel: this.discountLabel
       }
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
@@ -1962,5 +2008,202 @@ struct Index {
         hilog.info(DOMAIN, TAG, 'HUAWEI ID not logged in');
       }
     });
+  }
+
+  /**
+   * 初始化用户偏好存储
+   */
+  private async initPreferences(): Promise<void> {
+    try {
+      const context = getContext(this);
+      this.dataPreferences = await preferences.getPreferences(context, 'store_popup_prefs');
+      hilog.info(DOMAIN, TAG, 'Preferences initialized');
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Init preferences error: %{public}s', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 加载店铺弹窗
+   */
+  private async loadStorePops(): Promise<void> {
+    try {
+      const response = await apiService.getStorePops();
+      if (response.code === 200 && response.data && response.data.length > 0) {
+        hilog.info(DOMAIN, TAG, 'Store pops loaded: %{public}d items', response.data.length);
+
+        // 筛选出应该在首页显示的弹窗
+        const validPops = response.data.filter(pop => this.shouldShowPop(pop));
+
+        if (validPops.length > 0) {
+          // 按 sort 排序，取第一个
+          validPops.sort((a, b) => parseInt(a.sort) - parseInt(b.sort));
+          this.currentPop = validPops[0];
+
+          // 显示弹窗
+          animateTo({
+            duration: 300,
+            curve: Curve.EaseOut
+          }, () => {
+            this.showPopupDialog = true;
+          });
+
+          // 记录显示历史
+          this.recordPopShow(this.currentPop.pop_id);
+        }
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Error loading store pops: %{public}s', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 判断弹窗是否应该显示
+   */
+  private shouldShowPop(pop: StorePop): boolean {
+    // 1. 检查状态是否启用
+    if (pop.status !== '1') {
+      return false;
+    }
+
+    // 2. 检查是否在首页显示
+    if (pop.show_page.home_page !== 1) {
+      return false;
+    }
+
+    // 3. 检查平台（这里我们认为是 mini_app）
+    if (pop.show_plat.mini_app !== 1) {
+      return false;
+    }
+
+    // 4. 检查日期范围
+    const now = new Date();
+    const startDate = new Date(pop.start_date);
+    const endDate = new Date(pop.end_date);
+    if (now < startDate || now > endDate) {
+      hilog.info(DOMAIN, TAG, 'Pop %{public}s out of date range', pop.pop_id);
+      return false;
+    }
+
+    // 5. 检查显示频率
+    if (pop.show_frequency.days > 0) {
+      const lastShowTime = this.getLastShowTime(pop.pop_id);
+      if (lastShowTime) {
+        const daysPassed = Math.floor((now.getTime() - lastShowTime) / (1000 * 60 * 60 * 24));
+        if (daysPassed < pop.show_frequency.days) {
+          hilog.info(DOMAIN, TAG, 'Pop %{public}s shown too recently: %{public}d days ago',
+            pop.pop_id, daysPassed);
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * 获取弹窗最后显示时间
+   */
+  private getLastShowTime(popId: string): number | null {
+    if (!this.dataPreferences) {
+      return null;
+    }
+
+    try {
+      const key = `pop_${popId}_last_show`;
+      const lastShow = this.dataPreferences.getSync(key, 0) as number;
+      return lastShow > 0 ? lastShow : null;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Get last show time error: %{public}s', JSON.stringify(error));
+      return null;
+    }
+  }
+
+  /**
+   * 记录弹窗显示历史
+   */
+  private async recordPopShow(popId: string): Promise<void> {
+    if (!this.dataPreferences) {
+      return;
+    }
+
+    try {
+      const key = `pop_${popId}_last_show`;
+      await this.dataPreferences.put(key, Date.now());
+      await this.dataPreferences.flush();
+      hilog.info(DOMAIN, TAG, 'Recorded pop show: %{public}s', popId);
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Record pop show error: %{public}s', JSON.stringify(error));
+    }
+  }
+
+  /**
+   * 关闭弹窗
+   */
+  private closePopupDialog(): void {
+    animateTo({
+      duration: 200,
+      curve: Curve.EaseIn
+    }, () => {
+      this.showPopupDialog = false;
+      // 延迟清空 currentPop，避免动画过程中闪烁
+      setTimeout(() => {
+        this.currentPop = null;
+      }, 200);
+    });
+  }
+
+  /**
+   * 处理弹窗点击
+   */
+  private handlePopupClick(): void {
+    if (!this.currentPop) {
+      return;
+    }
+
+    const linkUrl = this.currentPop.link_url;
+    hilog.info(DOMAIN, TAG, 'Popup clicked: %{public}s', linkUrl);
+
+    // 关闭弹窗
+    this.closePopupDialog();
+
+    // 解析 link_url 并跳转
+    // 格式示例: pinme://store?store_id=5849&type=1
+    if (linkUrl.startsWith('pinme://store')) {
+      // 解析URL参数
+      const urlParts = linkUrl.split('?');
+      if (urlParts.length > 1) {
+        const queryString = urlParts[1];
+        const params = this.parseQueryString(queryString);
+        const orderType = params['type'];
+
+        // type=1 表示堂食，type=2 表示自取
+        if (orderType === '1') {
+          this.selectOrderType(OrderType.DINE_IN);
+        } else if (orderType === '2') {
+          this.selectOrderType(OrderType.PICKUP);
+        } else {
+          // 默认跳转到菜单页
+          this.selectOrderType(OrderType.PICKUP);
+        }
+      }
+    }
+  }
+
+  /**
+   * 解析URL查询字符串
+   */
+  private parseQueryString(query: string): Record<string, string> {
+    const params: Record<string, string> = {};
+    const pairs = query.split('&');
+    for (const pair of pairs) {
+      const parts = pair.split('=');
+      const key = parts[0];
+      const value = parts[1];
+      if (key && value) {
+        params[key] = decodeURIComponent(value);
+      }
+    }
+    return params;
   }
 }

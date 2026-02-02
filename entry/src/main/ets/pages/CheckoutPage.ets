@@ -9,7 +9,8 @@ import {
   OrderCondiment,
   OrderPolicyProduct,
   OrderBoxInfo,
-  PackageItemPrice
+  PackageItemPrice,
+  OrderAdjustItem
 } from '../models/StoreModels';
 import { AppConfig } from '../config/AppConfig';
 
@@ -47,6 +48,13 @@ struct CheckoutPage {
   @State boxInfo: CartBoxInfo | null = null;  // 餐盒费详情
   @State voucherDiscount: number = 0; // 兑换券折扣
   @State couponDiscount: number = 0;  // 优惠券折扣
+
+  // 折扣信息
+  @State hasDiscount: boolean = false;  // 是否有折扣
+  @State discountRate: number = 1.0;    // 折扣率（0.9=九折）
+  @State discountName: string = '';     // 折扣名称
+  @State subtotalBeforeDiscount: number = 0;  // 折扣前小计
+  @State discountAmount: number = 0;    // 折扣金额
 
   // 联系信息
   @State email: string = '';
@@ -109,28 +117,27 @@ struct CheckoutPage {
     this.cartTotal = appState.cartTotal;
     this.cartCount = appState.cartCount;
 
-    // 计算餐盒费（外卖自取时收取，且需要商家配置了餐盒费）
+    // 计算餐盒费（外卖自取时收取，餐盒费 = 单价 × 商品数量）
     this.boxFee = 0;
     this.boxInfo = null;
     if (this.orderType === OrderType.PICKUP) {
-      // 从购物车中找到第一个有餐盒费配置的商品
+      // 遍历所有购物车商品，累加餐盒费（每件商品都要收取餐盒费）
       for (const item of this.cartItems) {
         if (item.boxInfo && item.boxInfo.price > 0) {
-          this.boxInfo = item.boxInfo;
-          this.boxFee = item.boxInfo.price;
-          break;
+          if (!this.boxInfo) {
+            this.boxInfo = item.boxInfo;  // 保存第一个餐盒费信息用于显示
+          }
+          this.boxFee += item.boxInfo.price * item.quantity;
         }
       }
     }
 
-    // 如果店铺信息为空，从API获取
-    if (!this.storeName || !this.storeAddress) {
-      await this.loadStoreInfo();
-    }
+    // 从API获取店铺信息和折扣信息
+    await this.loadStoreInfo();
 
     this.isLoading = false;
-    hilog.info(DOMAIN, TAG, 'Cart loaded: %{public}d items, total: %{public}d',
-      this.cartCount, this.cartTotal);
+    hilog.info(DOMAIN, TAG, 'Cart loaded: %{public}d items, total: %{public}d, discount: %{public}f',
+      this.cartCount, this.cartTotal, this.discountRate);
   }
 
   /**
@@ -147,6 +154,10 @@ struct CheckoutPage {
         if (!this.storeAddress) {
           this.storeAddress = config.address || '';
         }
+
+        // 加载折扣信息
+        this.loadDiscountInfo(config);
+
         hilog.info(DOMAIN, TAG, 'Store info loaded: %{public}s', this.storeName);
       }
     } catch (error) {
@@ -154,9 +165,43 @@ struct CheckoutPage {
     }
   }
 
-  // 获取总计金额
+  /**
+   * 加载折扣信息
+   */
+  private loadDiscountInfo(config: Record<string, ESObject>): void {
+    // 检查是否有折扣
+    if (config.has_discount === 1 && config.extend?.order_adjust_amount?.data) {
+      const adjustData = config.extend.order_adjust_amount.data as OrderAdjustItem[];
+      // 查找百分比折扣（type=1）
+      const percentDiscount: OrderAdjustItem | undefined = adjustData.find((item: OrderAdjustItem): boolean => item.type === 1 && item.ext?.ratio !== undefined);
+      if (percentDiscount && percentDiscount.ext.ratio !== undefined) {
+        this.hasDiscount = true;
+        this.discountRate = percentDiscount.ext.ratio;  // 如0.9表示九折
+        this.discountName = percentDiscount.name || '外賣自取九折優惠';
+
+        // 计算折扣前小计和折扣金额
+        this.subtotalBeforeDiscount = this.cartTotal + this.boxFee;
+        this.discountAmount = this.subtotalBeforeDiscount * (1 - this.discountRate);
+
+        hilog.info(DOMAIN, TAG, 'Discount loaded: rate=%{public}f, amount=%{public}f',
+          this.discountRate, this.discountAmount);
+      }
+    }
+  }
+
+  // 获取总计金额（应用折扣后的实付金额）
   private getTotalAmount(): number {
-    return this.cartTotal + this.boxFee - this.voucherDiscount - this.couponDiscount;
+    // 计算小计（商品总价 + 餐盒费）
+    const subtotal = this.cartTotal + this.boxFee;
+
+    // 应用折扣
+    let discountedSubtotal = subtotal;
+    if (this.hasDiscount && this.discountRate < 1) {
+      discountedSubtotal = subtotal * this.discountRate;
+    }
+
+    // 减去兑换券和优惠券
+    return discountedSubtotal - this.voucherDiscount - this.couponDiscount;
   }
 
   // 获取订单类型文本
@@ -289,7 +334,6 @@ struct CheckoutPage {
    */
   private buildOrderProducts(): OrderProduct[] {
     const products: OrderProduct[] = [];
-    let isFirstItem = true;  // 只为第一个商品添加盒费
 
     for (const cartItem of this.cartItems) {
       // 使用购物车中保存的规格码
@@ -449,8 +493,8 @@ struct CheckoutPage {
       }
 
       // 构建订单商品
-      // 只为第一个商品添加盒费，避免重复计费（需要商家配置了餐盒费）
-      const boxInfo = (this.orderType === OrderType.PICKUP && isFirstItem && this.boxInfo)
+      // 每个有餐盒费配置的商品都添加盒费（餐盒费按数量计算）
+      const boxInfo = (this.orderType === OrderType.PICKUP && cartItem.boxInfo && cartItem.boxInfo.price > 0)
         ? this.buildBoxInfo(cartItem)
         : null;
 
@@ -470,7 +514,6 @@ struct CheckoutPage {
       };
 
       products.push(orderProduct);
-      isFirstItem = false;  // 后续商品不再添加盒费
     }
 
     return products;
@@ -480,24 +523,25 @@ struct CheckoutPage {
    * 构建外卖盒信息
    */
   private buildBoxInfo(cartItem: CartItem): OrderBoxInfo | null {
-    // 外卖自取时添加餐盒费（需要有餐盒费配置）
-    if (this.orderType === OrderType.PICKUP && this.boxInfo) {
-      const priceStr = this.boxInfo.price.toFixed(4);
+    // 外卖自取时添加餐盒费（使用商品自己的餐盒费配置）
+    if (this.orderType === OrderType.PICKUP && cartItem.boxInfo && cartItem.boxInfo.price > 0) {
+      const boxInfo = cartItem.boxInfo;
+      const priceStr = boxInfo.price.toFixed(4);
       const orderBoxInfo: OrderBoxInfo = {
         id: '',
         product_id: cartItem.productId,
-        box_id: this.boxInfo.boxId,
+        box_id: boxInfo.boxId,
         box: {
-          box_id: this.boxInfo.boxId,
+          box_id: boxInfo.boxId,
           store_id: AppConfig.DEFAULT_STORE_ID,
-          local_name: this.boxInfo.localName,
-          en_name: this.boxInfo.enName,
+          local_name: boxInfo.localName,
+          en_name: boxInfo.enName,
           cn_name: '',
           price: priceStr
         },
         store_id: AppConfig.DEFAULT_STORE_ID,
-        local_name: this.boxInfo.localName,
-        en_name: this.boxInfo.enName,
+        local_name: boxInfo.localName,
+        en_name: boxInfo.enName,
         cn_name: '',
         price: priceStr,
         display_order: '0'
@@ -684,11 +728,28 @@ struct CheckoutPage {
 
       // 价格和数量
       Column() {
-        Text(`${this.currencySymbol}${item.unitPrice.toFixed(0)}`)
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Medium)
+        // 如果有折扣，显示原价和折后价
+        if (this.hasDiscount && this.discountRate < 1) {
+          Row() {
+            // 原价（删除线）
+            Text(`${this.currencySymbol}${item.unitPrice.toFixed(0)}`)
+              .fontSize(12)
+              .fontColor('#999999')
+              .decoration({ type: TextDecorationType.LineThrough, color: '#999999' })
+              .margin({ right: 4 })
+
+            // 折后价
+            Text(`${this.currencySymbol}${(item.unitPrice * this.discountRate).toFixed(0)}`)
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FF6B00')
+          }
+        } else {
+          Text(`${this.currencySymbol}${item.unitPrice.toFixed(0)}`)
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#333333')
+        }
 
         Text(`x${item.quantity}`)
           .fontSize(12)
@@ -707,21 +768,65 @@ struct CheckoutPage {
   @Builder
   FeeDetailSection() {
     Column() {
-      // 餐盒费（只有当商家配置了餐盒费时才显示）
+      // 小计（商品总价 + 餐盒费）
+      Row() {
+        Text('小計')
+          .fontSize(14)
+          .fontColor('#333333')
+        Blank()
+        Text(`${this.currencySymbol}${(this.cartTotal + this.boxFee).toFixed(0)}`)
+          .fontSize(14)
+          .fontColor('#333333')
+      }
+      .width('100%')
+      .padding({ top: 14, bottom: 14 })
+
+      // 餐盒费明细（只有当商家配置了餐盒费时才显示）
       if (this.boxFee > 0) {
         Row() {
-          Text('餐盒費')
-            .fontSize(14)
-            .fontColor('#333333')
+          Text('  • 餐盒費')
+            .fontSize(12)
+            .fontColor('#999999')
           Blank()
           Text(`${this.currencySymbol}${this.boxFee.toFixed(0)}`)
+            .fontSize(12)
+            .fontColor('#999999')
+        }
+        .width('100%')
+        .padding({ top: 4, bottom: 4 })
+      }
+
+      Divider().color('#F5F5F5').strokeWidth(1)
+
+      // 折扣信息
+      if (this.hasDiscount && this.discountRate < 1) {
+        Row() {
+          Column() {
+            Text(this.discountName)
+              .fontSize(14)
+              .fontColor('#FF6B00')
+              .fontWeight(FontWeight.Medium)
+            Text(`${((1 - this.discountRate) * 100).toFixed(0)}% OFF`)
+              .fontSize(11)
+              .fontColor('#FF6B00')
+              .margin({ top: 2 })
+          }
+          .alignItems(HorizontalAlign.Start)
+
+          Blank()
+
+          Text(`-${this.currencySymbol}${this.discountAmount.toFixed(0)}`)
             .fontSize(14)
-            .fontColor('#333333')
+            .fontColor('#FF6B00')
+            .fontWeight(FontWeight.Medium)
         }
         .width('100%')
         .padding({ top: 14, bottom: 14 })
+        .backgroundColor('#FFF8F0')
+        .borderRadius(4)
+        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
 
-        Divider().color('#F5F5F5').strokeWidth(1)
+        Divider().color('#F5F5F5').strokeWidth(1).margin({ top: 14 })
       }
 
       // 兑换券

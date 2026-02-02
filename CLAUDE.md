@@ -44,7 +44,13 @@ Order Status IDs: '2'=待支付, '3'=進行中, '4'=已完成, '5'=已取消, '6
 ## Navigation
 
 ```typescript
-router.pushUrl({ url: 'pages/MenuPage', params: { orderType, initialTab } });
+router.pushUrl({
+  url: 'pages/MenuPage',
+  params: {
+    orderType, initialTab,
+    hasDiscount, discountRatio, discountLabel  // Discount params from Index.ets
+  }
+});
 // Do NOT use router.pushNamedRoute()
 ```
 
@@ -66,6 +72,61 @@ router.pushUrl({ url: 'pages/MenuPage', params: { orderType, initialTab } });
 | `/api/coupon/list` | GET | Coupons |
 
 **Secret Key:** `a91f9568fbd23881c2b2c7fa9af5b12a`
+
+## Discount System
+
+**Discount applies ONLY to PICKUP orders (OrderType.PICKUP = 2)**
+
+### API Data Structure
+
+```json
+{
+  "config": {
+    "extend": {
+      "product_adjust_amount": {
+        "time": "2025-09-09 15:35:02",
+        "data": [{
+          "id": 1,
+          "name": "10%Discount",        // Discount label text
+          "type": 1,                    // 1=percentage, 2=fixed amount
+          "ext": { "ratio": 0.9 }       // 0.9 = 10% off
+        }]
+      }
+    },
+    "has_discount": 1,                  // Legacy: 1=enabled, 0=disabled
+    "discount": 10                      // Legacy: discount percentage
+  }
+}
+```
+
+### Discount Calculation
+
+```typescript
+// Parse discount from API (Index.ets → MenuPage.ets via router params)
+if (config.extend?.product_adjust_amount?.data[0]) {
+  hasDiscount = true
+  discountRatio = data[0].ext.ratio  // 0.9 for 10% off
+  discountLabel = data[0].name       // "10%Discount"
+}
+
+// Calculate discount price (PICKUP only)
+discountPrice = originalPrice * discountRatio
+```
+
+### UI Display
+
+**Product List (MenuPage):**
+- Discount price: Red (#FF6B6B), larger font
+- Original price: Gray (#999999) with strikethrough
+- Discount label: Red badge "外賣自取{discountLabel}" (e.g., "外賣自取10%Discount")
+
+**Product Detail Sheet:**
+- Bottom bar shows discount price + original price (strikethrough)
+
+**Cart Bottom Bar:**
+- Total shows: "總數 ${discountTotal} ${originalTotal}" (strikethrough on original)
+
+**Important:** Discount label text comes from API (`product_adjust_amount.data[0].name`), fallback to calculated text like "九折優惠" if not provided.
 
 ## Product Detail Structure
 
@@ -91,7 +152,7 @@ ProductDetail
 }
 ```
 
-**Box Fee:** Only for PICKUP, $2 per order (add to first product only)
+**Box Fee:** Only for PICKUP, price from API `box.box.price`, calculated as `price × quantity` per product
 
 ## Cart Models (AppStorage.ets)
 
@@ -140,7 +201,7 @@ appState.isLoggedIn / addToCart() / cartTotal / cartCount / clearCart()
 
 ## Colors
 
-primary_yellow=#FFD700, page_background=#F5F5F5, text_primary=#333333, text_secondary=#666666
+primary_yellow=#FFD700, page_background=#F5F5F5, text_primary=#333333, text_secondary=#666666, discount_red=#FF6B6B
 
 ## Key Kits
 

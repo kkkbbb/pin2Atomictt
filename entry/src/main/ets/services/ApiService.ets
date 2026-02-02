@@ -15,7 +15,9 @@ import {
   OrderDetailData,
   PayOrderParams,
   PayOrderData,
-  SchemeStoresData
+  SchemeStoresData,
+  PayMethodItem,
+  StorePop
 } from '../models/StoreModels';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { buffer } from '@kit.ArkTS';
@@ -384,10 +386,10 @@ export class ApiService {
    * 获取店铺弹窗
    * GET /api/store/store-pops
    */
-  async getStorePops(): Promise<ApiResponse<object[]>> {
+  async getStorePops(): Promise<ApiResponse<StorePop[]>> {
     const params = new RequestParams();
     params.store_id = this.storeId;
-    return this.get<object[]>('/api/store/store-pops', params);
+    return this.get<StorePop[]>('/api/store/store-pops', params);
   }
 
   /**
@@ -601,6 +603,41 @@ export class ApiService {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
       hilog.error(DOMAIN, TAG, 'Scheme stores error: %{public}s', errorMsg);
+      throw new ApiError(errorMsg);
+    }
+  }
+
+  /**
+   * 获取支付方式列表
+   * GET /api/payment/pay-method?store_id=xxx
+   */
+  async getPaymentMethods(): Promise<ApiResponse<PayMethodItem[]>> {
+    const httpRequest = this.createHttpRequest();
+    const url = `${ApiConfig.BASE_URL}/api/payment/pay-method?store_id=${this.storeId}`;
+
+    hilog.info(DOMAIN, TAG, 'Get payment methods: store_id=%{public}s', this.storeId);
+
+    try {
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: this.getHeaders(),
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      httpRequest.destroy();
+
+      if (response.responseCode === 200) {
+        const result = JSON.parse(response.result as string) as ApiResponse<PayMethodItem[]>;
+        hilog.info(DOMAIN, TAG, 'Payment methods success: count=%{public}d',
+          result.data?.length || 0);
+        return result;
+      } else {
+        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      hilog.error(DOMAIN, TAG, 'Payment methods error: %{public}s', errorMsg);
       throw new ApiError(errorMsg);
     }
   }

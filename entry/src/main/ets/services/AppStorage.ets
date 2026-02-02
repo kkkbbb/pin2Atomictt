@@ -379,8 +379,29 @@ export class AppStateManager {
       if (quantity <= 0) {
         this._cartItems.splice(index, 1);
       } else {
-        this._cartItems[index].quantity = quantity;
+        // 手动创建新对象以触发 UI 更新
+        const oldItem = this._cartItems[index];
+        const updatedItem: CartItem = {
+          productId: oldItem.productId,
+          productName: oldItem.productName,
+          coverImage: oldItem.coverImage,
+          groupId: oldItem.groupId,
+          priceIndex: oldItem.priceIndex,
+          priceName: oldItem.priceName,
+          standardCode: oldItem.standardCode,
+          basePrice: oldItem.basePrice,
+          packageSelections: oldItem.packageSelections,
+          policySelections: oldItem.policySelections,
+          quantity: quantity,
+          unitPrice: oldItem.unitPrice,
+          specDescription: oldItem.specDescription,
+          cartItemId: oldItem.cartItemId,
+          boxInfo: oldItem.boxInfo
+        };
+        this._cartItems[index] = updatedItem;
       }
+      // 创建新数组引用以触发 UI 更新
+      this._cartItems = this._cartItems.slice();
       await this.saveData('cart', JSON.stringify(this._cartItems));
       hilog.info(DOMAIN, TAG, 'Cart item updated: %{public}s, qty: %{public}d',
         cartItemId, quantity);
