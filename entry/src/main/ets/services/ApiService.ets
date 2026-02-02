@@ -22,6 +22,8 @@ import {
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { buffer } from '@kit.ArkTS';
 import { AppConfig } from '../config/AppConfig';
+// Phase 3: Type guards (optional, for future use)
+import { isValidApiResponse } from '../types/guards/ApiGuards';
 
 /**
  * 游客Token响应
@@ -85,6 +87,17 @@ class ApiError extends Error {
     super(message);
     this.code = code;
   }
+}
+
+/**
+ * Phase 3: 统一请求配置接口
+ */
+interface RequestConfig {
+  method: http.RequestMethod;
+  path: string;
+  params?: RequestParams;
+  body?: object;
+  rawUrl?: string;  // 自定义完整 URL（用于特殊格式的请求）
 }
 
 /**
@@ -197,40 +210,60 @@ export class ApiService {
   }
 
   /**
-   * GET请求
+   * Phase 3: 统一HTTP请求方法（消除GET/POST重复代码）
+   * @param config 请求配置
+   * @returns API响应
    */
-  private async get<T>(path: string, params?: RequestParams): Promise<ApiResponse<T>> {
+  private async request<T>(config: RequestConfig): Promise<ApiResponse<T>> {
     const httpRequest = this.createHttpRequest();
-    let url = `${ApiConfig.BASE_URL}${path}`;
 
-    if (params) {
-      const queryString = this.buildQueryString(params);
+    // 构建 URL
+    let url = config.rawUrl || `${ApiConfig.BASE_URL}${config.path}`;
+    if (!config.rawUrl && config.params) {
+      const queryString = this.buildQueryString(config.params);
       if (queryString) {
         url = `${url}?${queryString}`;
       }
     }
 
     const headers = this.getHeaders();
-    hilog.info(DOMAIN, TAG, 'GET request: %{public}s', url);
-    hilog.info(DOMAIN, TAG, 'Headers: store-id=%{public}s, langcode=%{public}s',
-      headers['store-id'], headers['langcode']);
+    const methodName = config.method === http.RequestMethod.GET ? 'GET' : 'POST';
+
+    hilog.info(DOMAIN, TAG, '%{public}s request: %{public}s', methodName, url);
+    if (config.method === http.RequestMethod.GET) {
+      hilog.info(DOMAIN, TAG, 'Headers: store-id=%{public}s, langcode=%{public}s',
+        headers['store-id'], headers['langcode']);
+    }
 
     try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
+      // 构建请求选项
+      const requestOptions: http.HttpRequestOptions = {
+        method: config.method,
         header: headers,
         connectTimeout: 30000,
         readTimeout: 30000
-      });
+      };
+
+      // POST 请求添加 body
+      if (config.method === http.RequestMethod.POST && config.body) {
+        requestOptions.extraData = JSON.stringify(config.body);
+      }
+
+      const response = await httpRequest.request(url, requestOptions);
 
       hilog.info(DOMAIN, TAG, 'HTTP responseCode: %{public}d', response.responseCode);
       httpRequest.destroy();
 
       if (response.responseCode === 200) {
         const resultStr = response.result as string;
-        hilog.info(DOMAIN, TAG, 'Response length: %{public}d', resultStr.length);
+        if (config.method === http.RequestMethod.GET) {
+          hilog.info(DOMAIN, TAG, 'Response length: %{public}d', resultStr.length);
+        }
+
         const result = JSON.parse(resultStr) as ApiResponse<T>;
-        hilog.info(DOMAIN, TAG, 'GET success: code=%{public}d, msg=%{public}s', result.code, result.msg);
+        hilog.info(DOMAIN, TAG, '%{public}s success: code=%{public}d, msg=%{public}s',
+          methodName, result.code, result.msg);
+
         return result;
       } else {
         hilog.error(DOMAIN, TAG, 'HTTP Error: %{public}d', response.responseCode);
@@ -238,42 +271,42 @@ export class ApiService {
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'GET error: %{public}s', errorMsg);
+      hilog.error(DOMAIN, TAG, '%{public}s error: %{public}s', methodName, errorMsg);
       throw new ApiError(errorMsg);
     }
   }
 
   /**
-   * POST请求
+   * GET请求（使用统一 request 方法）
+   */
+  private async get<T>(path: string, params?: RequestParams): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: http.RequestMethod.GET,
+      path: path,
+      params: params
+    });
+  }
+
+  /**
+   * POST请求（使用统一 request 方法）
    */
   private async post<T>(path: string, body: object): Promise<ApiResponse<T>> {
-    const httpRequest = this.createHttpRequest();
-    const url = `${ApiConfig.BASE_URL}${path}`;
+    return this.request<T>({
+      method: http.RequestMethod.POST,
+      path: path,
+      body: body
+    });
+  }
 
-    hilog.info(DOMAIN, TAG, 'POST request: %{public}s', url);
-
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.POST,
-        header: this.getHeaders(),
-        extraData: JSON.stringify(body),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<T>;
-        hilog.info(DOMAIN, TAG, 'POST success: code=%{public}d', result.code);
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, 'POST error: %{public}s', JSON.stringify(error));
-      throw new ApiError(JSON.stringify(error));
-    }
+  /**
+   * Phase 3: GET请求（自定义完整URL）
+   */
+  private async getRaw<T>(url: string): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: http.RequestMethod.GET,
+      path: '',
+      rawUrl: url
+    });
   }
 
   // ==================== 业务接口 ====================
@@ -446,7 +479,7 @@ export class ApiService {
   }
 
   /**
-   * 获取产品政策（加送選擇）
+   * Phase 3: 获取产品政策（加送選擇）- 使用统一 request 方法
    * GET /api/product/policy
    * @param policyIds 政策ID数组
    */
@@ -455,7 +488,6 @@ export class ApiService {
       return { code: 200, msg: '成功', data: [] };
     }
 
-    const httpRequest = this.createHttpRequest();
     // 构建URL: /api/product/policy?store_id=xxx&policies[]=id1&policies[]=id2
     let url = `${ApiConfig.BASE_URL}/api/product/policy?store_id=${this.storeId}`;
     for (const policyId of policyIds) {
@@ -464,29 +496,7 @@ export class ApiService {
 
     hilog.info(DOMAIN, TAG, 'GET policy request: %{public}s', url);
 
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: this.getHeaders(),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<PolicyGroupData[]>;
-        hilog.info(DOMAIN, TAG, 'Policy success: code=%{public}d, count=%{public}d',
-          result.code, result.data?.length || 0);
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'Policy error: %{public}s', errorMsg);
-      throw new ApiError(errorMsg);
-    }
+    return this.getRaw<PolicyGroupData[]>(url);
   }
 
   /**
@@ -500,146 +510,49 @@ export class ApiService {
   }
 
   /**
-   * 获取订单详情
+   * Phase 3: 获取订单详情 - 使用统一 request 方法
    * GET /api/order/detail
    * @param orderId 订单ID
    */
   async getOrderDetail(orderId: string): Promise<ApiResponse<OrderDetailData>> {
-    const httpRequest = this.createHttpRequest();
     const url = `${ApiConfig.BASE_URL}/api/order/detail?order_id=${orderId}`;
-
     hilog.info(DOMAIN, TAG, 'GET order detail: %{public}s', url);
-
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: this.getHeaders(),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<OrderDetailData>;
-        hilog.info(DOMAIN, TAG, 'Order detail success: order_id=%{public}s, status=%{public}s',
-          result.data?.order_id, result.data?.status?.customer_name);
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'Order detail error: %{public}s', errorMsg);
-      throw new ApiError(errorMsg);
-    }
+    return this.getRaw<OrderDetailData>(url);
   }
 
   /**
-   * 支付订单
+   * Phase 3: 支付订单 - 使用统一 request 方法
    * GET /api/payment/pay-order
    * @param params 支付参数
    */
   async payOrder(params: PayOrderParams): Promise<ApiResponse<PayOrderData>> {
-    const httpRequest = this.createHttpRequest();
     const url = `${ApiConfig.BASE_URL}/api/payment/pay-order?order_id=${params.order_id}&total=${params.total}&pay_channel=${params.pay_channel}&pay_method=${params.pay_method}&pay_type=${params.pay_type}`;
 
     hilog.info(DOMAIN, TAG, 'Pay order request: order_id=%{public}d, total=%{public}s, pay_type=%{public}s',
       params.order_id, params.total, params.pay_type);
 
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: this.getHeaders(),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<PayOrderData>;
-        hilog.info(DOMAIN, TAG, 'Pay order success: url=%{public}s', result.data?.url || 'null');
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'Pay order error: %{public}s', errorMsg);
-      throw new ApiError(errorMsg);
-    }
+    return this.getRaw<PayOrderData>(url);
   }
 
   /**
-   * 获取连锁门店列表
+   * Phase 3: 获取连锁门店列表 - 使用统一 request 方法
    * GET /api/store/scheme-stores
    * @param schemeId 连锁品牌ID（从 member_plan.scheme_id 获取）
    */
   async getSchemeStores(schemeId: string): Promise<ApiResponse<SchemeStoresData>> {
-    const httpRequest = this.createHttpRequest();
     const url = `${ApiConfig.BASE_URL}/api/store/scheme-stores?scheme_id=${schemeId}&store_id=${this.storeId}`;
-
     hilog.info(DOMAIN, TAG, 'Get scheme stores: scheme_id=%{public}s', schemeId);
-
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: this.getHeaders(),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<SchemeStoresData>;
-        hilog.info(DOMAIN, TAG, 'Scheme stores success: count=%{public}d',
-          result.data?.stores?.length || 0);
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'Scheme stores error: %{public}s', errorMsg);
-      throw new ApiError(errorMsg);
-    }
+    return this.getRaw<SchemeStoresData>(url);
   }
 
   /**
-   * 获取支付方式列表
+   * Phase 3: 获取支付方式列表 - 使用统一 request 方法
    * GET /api/payment/pay-method?store_id=xxx
    */
   async getPaymentMethods(): Promise<ApiResponse<PayMethodItem[]>> {
-    const httpRequest = this.createHttpRequest();
     const url = `${ApiConfig.BASE_URL}/api/payment/pay-method?store_id=${this.storeId}`;
-
     hilog.info(DOMAIN, TAG, 'Get payment methods: store_id=%{public}s', this.storeId);
-
-    try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.GET,
-        header: this.getHeaders(),
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-
-      httpRequest.destroy();
-
-      if (response.responseCode === 200) {
-        const result = JSON.parse(response.result as string) as ApiResponse<PayMethodItem[]>;
-        hilog.info(DOMAIN, TAG, 'Payment methods success: count=%{public}d',
-          result.data?.length || 0);
-        return result;
-      } else {
-        throw new ApiError(`HTTP Error: ${response.responseCode}`, response.responseCode);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : JSON.stringify(error);
-      hilog.error(DOMAIN, TAG, 'Payment methods error: %{public}s', errorMsg);
-      throw new ApiError(errorMsg);
-    }
+    return this.getRaw<PayMethodItem[]>(url);
   }
 }
 

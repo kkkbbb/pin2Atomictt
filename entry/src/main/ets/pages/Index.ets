@@ -5,6 +5,11 @@ import { apiService, ApiConfig } from '../services/ApiService';
 import { HomeData, OrderType, LoginConfig, RankProduct, MemberPlan, SchemeStore, StorePop } from '../models/StoreModels';
 import { router, window } from '@kit.ArkUI';
 import { preferences } from '@kit.ArkData';
+// 新增导入：公共组件和工具类
+import { LoadingView, SkeletonType } from '../components/common/LoadingView';
+import { DiscountManager } from '../utils/DiscountManager';
+import { RouteManager } from '../utils/RouteManager';
+import { DataLoader } from '../utils/DataLoader';
 
 const DOMAIN = 0x0000;
 const TAG = 'StoreHome';
@@ -48,8 +53,6 @@ struct Index {
   @State hasMultipleStores: boolean = false;
   // 是否有登录方式（显示登录卡片）
   @State hasLoginMethods: boolean = false;
-  // 骨架屏动画透明度
-  @State skeletonOpacity: number = 0.3;
   // 门店选择弹窗
   @State showStoreSelectPanel: boolean = false;
   // 门店列表
@@ -194,211 +197,16 @@ struct Index {
     .height('100%')
   }
 
-  // 加载中视图 - 骨架屏
+  // 加载中视图 - 使用统一的 LoadingView 组件
   @Builder
   LoadingView() {
-    Scroll() {
-      Column() {
-        // 登录卡片骨架
-        Column() {
-          Row() {
-            Column() {
-              Column()
-                .width(120)
-                .height(20)
-                .backgroundColor('#E0E0E0')
-                .borderRadius(4)
-                .opacity(this.skeletonOpacity)
-              Column()
-                .width(100)
-                .height(14)
-                .backgroundColor('#E0E0E0')
-                .borderRadius(4)
-                .opacity(this.skeletonOpacity)
-                .margin({ top: 8 })
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-
-            Column()
-              .width(100)
-              .height(40)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(20)
-              .opacity(this.skeletonOpacity)
-          }
-          .width('100%')
-          .padding({ left: 16, right: 16, top: 16, bottom: 16 })
-
-          Divider().color('#EEEEEE').width('100%')
-
-          Row() {
-            Column()
-              .width(80)
-              .height(20)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-            Divider().vertical(true).height(20).color('#EEEEEE')
-            Column()
-              .width(80)
-              .height(20)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-          }
-          .width('100%')
-          .height(50)
-          .justifyContent(FlexAlign.SpaceAround)
-        }
-        .width('92%')
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(12)
-        .margin({ top: 16 })
-        .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
-
-        // 服务选择区域骨架（自取/堂食）
-        Row() {
-          Column() {
-            Column()
-              .width(62)
-              .height(62)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(8)
-              .opacity(this.skeletonOpacity)
-            Column()
-              .width(40)
-              .height(16)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-              .margin({ top: 12 })
-          }
-          .layoutWeight(1)
-          .aspectRatio(1)
-          .backgroundColor($r('app.color.card_background'))
-          .borderRadius(12)
-          .justifyContent(FlexAlign.Center)
-          .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
-
-          Blank().width(12)
-
-          Column() {
-            Column()
-              .width(62)
-              .height(62)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(8)
-              .opacity(this.skeletonOpacity)
-            Column()
-              .width(40)
-              .height(16)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-              .margin({ top: 12 })
-          }
-          .layoutWeight(1)
-          .aspectRatio(1)
-          .backgroundColor($r('app.color.card_background'))
-          .borderRadius(12)
-          .justifyContent(FlexAlign.Center)
-          .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
-        }
-        .width('92%')
-        .margin({ top: 16 })
-
-        // 门店卡片骨架
-        Column() {
-          Row() {
-            Column()
-              .width(24)
-              .height(24)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-            Column()
-              .width(60)
-              .height(18)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(4)
-              .opacity(this.skeletonOpacity)
-              .margin({ left: 8 })
-          }
-          .width('100%')
-          .margin({ bottom: 12 })
-
-          Row() {
-            Column()
-              .width(20)
-              .height(20)
-              .backgroundColor('#E0E0E0')
-              .borderRadius(10)
-              .opacity(this.skeletonOpacity)
-            Column() {
-              Column()
-                .width('80%')
-                .height(16)
-                .backgroundColor('#E0E0E0')
-                .borderRadius(4)
-                .opacity(this.skeletonOpacity)
-              Column()
-                .width('60%')
-                .height(14)
-                .backgroundColor('#E0E0E0')
-                .borderRadius(4)
-                .opacity(this.skeletonOpacity)
-                .margin({ top: 6 })
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            .margin({ left: 12 })
-          }
-          .width('100%')
-        }
-        .width('92%')
-        .padding(16)
-        .backgroundColor($r('app.color.card_background'))
-        .borderRadius(12)
-        .margin({ top: 16 })
-        .shadow({ radius: 4, color: 'rgba(0, 0, 0, 0.08)', offsetX: 0, offsetY: 2 })
+    LoadingView({
+      config: {
+        message: '加載店鋪信息...',
+        showSpinner: true,
+        skeletonType: SkeletonType.CARD
       }
-      .width('100%')
-      .alignItems(HorizontalAlign.Center)
-    }
-    .width('100%')
-    .layoutWeight(1)
-    .onAppear(() => {
-      this.startSkeletonAnimation();
     })
-  }
-
-  // 骨架屏闪烁动画
-  private startSkeletonAnimation(): void {
-    const animate = () => {
-      animateTo({
-        duration: 800,
-        curve: Curve.EaseInOut,
-        onFinish: () => {
-          if (this.isLoading) {
-            animateTo({
-              duration: 800,
-              curve: Curve.EaseInOut,
-              onFinish: () => {
-                if (this.isLoading) {
-                  animate();
-                }
-              }
-            }, () => {
-              this.skeletonOpacity = 0.3;
-            });
-          }
-        }
-      }, () => {
-        this.skeletonOpacity = 0.6;
-      });
-    };
-    animate();
   }
 
   // 店铺头部信息
@@ -430,7 +238,7 @@ struct Index {
             .height(80)
             .borderRadius(6)
             .backgroundColor('#E0E0E0')
-            .opacity(this.skeletonOpacity)
+            .opacity(0.5)
         } else if (this.storeImage) {
           Image(this.storeImage)
             .width(80)
@@ -460,20 +268,20 @@ struct Index {
               .height(22)
               .backgroundColor('#E0E0E0')
               .borderRadius(4)
-              .opacity(this.skeletonOpacity)
+              .opacity(0.5)
             Row() {
               Column()
                 .width(50)
                 .height(18)
                 .backgroundColor('#E0E0E0')
                 .borderRadius(4)
-                .opacity(this.skeletonOpacity)
+                .opacity(0.5)
               Column()
                 .width(60)
                 .height(18)
                 .backgroundColor('#E0E0E0')
                 .borderRadius(4)
-                .opacity(this.skeletonOpacity)
+                .opacity(0.5)
                 .margin({ left: 8 })
             }
             .margin({ top: 8 })
@@ -1805,22 +1613,14 @@ struct Index {
         this.schemeId, this.storeList.length);
     }
 
-    // 折扣信息 - 优先从 product_adjust_amount 获取
-    if (config.extend?.product_adjust_amount?.data && config.extend.product_adjust_amount.data.length > 0) {
-      const adjustItem = config.extend.product_adjust_amount.data[0];
-      if (adjustItem.type === 1 && adjustItem.ext?.ratio) {
-        // type=1 表示百分比折扣
-        this.hasDiscount = true;
-        this.discountRatio = adjustItem.ext.ratio;
-        this.discountLabel = adjustItem.name || '';
-        hilog.info(DOMAIN, TAG, 'Discount enabled from extend: %{public}f, label: %{public}s',
-          this.discountRatio, this.discountLabel);
-      }
-    } else if (config.has_discount === 1 && config.discount) {
-      // 从 has_discount 和 discount 字段获取折扣（旧版API）
-      this.hasDiscount = true;
-      this.discountRatio = config.discount / 100;
-      hilog.info(DOMAIN, TAG, 'Discount enabled (legacy): %{public}f', this.discountRatio);
+    // 折扣信息 - 使用 DiscountManager 统一解析
+    const discountInfo = DiscountManager.parseDiscountFromConfig(config);
+    this.hasDiscount = discountInfo.hasDiscount;
+    this.discountRatio = discountInfo.discountRatio;
+    this.discountLabel = discountInfo.discountLabel;
+    if (this.hasDiscount) {
+      hilog.info(DOMAIN, TAG, 'Discount enabled: ratio=%{public}f, label=%{public}s',
+        this.discountRatio, this.discountLabel);
     }
   }
 
@@ -1845,71 +1645,38 @@ struct Index {
   }
 
   /**
-   * 跳转到订单列表（历史订单）
+   * 跳转到订单列表（历史订单）- 使用 RouteManager
    */
   private goToOrders(): void {
     hilog.info(DOMAIN, TAG, 'Go to orders');
-    router.pushUrl({
-      url: 'pages/MenuPage',
-      params: {
-        orderType: OrderType.PICKUP,
-        themeColor: this.themeColor,
-        storeId: ApiConfig.DEFAULT_STORE_ID,
-        storeName: this.storeName,
-        storeImage: this.storeImage,
-        storeStatus: this.storeStatus,
-        todayStatus: this.todayStatus,
-        isOpen: this.isOpen,
-        notices: this.notices,
-        initialTab: 2,  // 历史订单Tab
-        hasDiscount: this.hasDiscount,
-        discountRatio: this.discountRatio,
-        discountLabel: this.discountLabel
-      }
-    }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
+    RouteManager.navigateToMenu({
+      orderType: OrderType.PICKUP,
+      initialTab: 2,  // 历史订单Tab
+      hasDiscount: this.hasDiscount,
+      discountRatio: this.discountRatio,
+      discountLabel: this.discountLabel
     });
   }
 
   /**
-   * 跳转到优惠券列表
+   * 跳转到优惠券列表 - 使用 RouteManager
    */
   private goToCoupons(): void {
     hilog.info(DOMAIN, TAG, 'Go to coupons');
-    router.pushUrl({
-      url: 'pages/CouponPage',
-      params: {
-        themeColor: this.themeColor,
-        isLoggedIn: this.isLoggedIn
-      }
-    }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
-    });
+    RouteManager.navigateToCoupon();
   }
 
   /**
-   * 选择订单类型，跳转到菜单页
+   * 选择订单类型，跳转到菜单页 - 使用 RouteManager
    */
   private selectOrderType(orderType: OrderType): void {
     hilog.info(DOMAIN, TAG, 'Select order type: %{public}d', orderType);
-    router.pushUrl({
-      url: 'pages/MenuPage',
-      params: {
-        orderType: orderType,
-        themeColor: this.themeColor,
-        storeId: ApiConfig.DEFAULT_STORE_ID,
-        storeName: this.storeName,
-        storeImage: this.storeImage,
-        storeStatus: this.storeStatus,
-        todayStatus: this.todayStatus,
-        isOpen: this.isOpen,
-        notices: this.notices,
-        hasDiscount: this.hasDiscount,
-        discountRatio: this.discountRatio,
-        discountLabel: this.discountLabel
-      }
-    }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'Router error: %{public}s', err.message);
+    RouteManager.navigateToMenu({
+      orderType: orderType,
+      initialTab: 1,  // 点餐Tab
+      hasDiscount: this.hasDiscount,
+      discountRatio: this.discountRatio,
+      discountLabel: this.discountLabel
     });
   }
 

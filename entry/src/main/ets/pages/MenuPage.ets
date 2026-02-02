@@ -31,6 +31,14 @@ import {
   CondimentGroupDetail,
   CondimentItemDetail
 } from '../models/StoreModels';
+// 新增导入：公共组件和工具类
+import { LoadingView, SkeletonType } from '../components/common/LoadingView';
+import { EmptyState } from '../components/common/EmptyState';
+import { DiscountManager } from '../utils/DiscountManager';
+import { RouteManager } from '../utils/RouteManager';
+// Phase 2: 响应式状态管理
+import { cartState, CartStateData } from '../store/modules/CartState';
+import { discountState, DiscountStateData } from '../store/modules/DiscountState';
 
 const DOMAIN = 0x0000;
 const TAG = 'MenuPage';
@@ -54,6 +62,36 @@ interface CondimentSelection {
   deliveryPrice: number;
   isDefault: string;
   standardCode: string;
+}
+
+/**
+ * Phase 2: 购物车状态观察者（ArkTS 兼容）
+ */
+class CartStateObserver {
+  private callback: (state: Readonly<CartStateData>) => void;
+
+  constructor(callback: (state: Readonly<CartStateData>) => void) {
+    this.callback = callback;
+  }
+
+  onStateChange(newState: Readonly<CartStateData>): void {
+    this.callback(newState);
+  }
+}
+
+/**
+ * Phase 2: 折扣状态观察者（ArkTS 兼容）
+ */
+class DiscountStateObserver {
+  private callback: (state: Readonly<DiscountStateData>) => void;
+
+  constructor(callback: (state: Readonly<DiscountStateData>) => void) {
+    this.callback = callback;
+  }
+
+  onStateChange(newState: Readonly<DiscountStateData>): void {
+    this.callback(newState);
+  }
 }
 
 @Entry
@@ -128,6 +166,10 @@ struct MenuPage {
   private scroller: Scroller = new Scroller();
   private categoryScroller: Scroller = new Scroller();
   private orderScroller: Scroller = new Scroller();
+
+  // Phase 2: 响应式状态订阅清理函数
+  private cartUnsubscribe: (() => void) | null = null;
+  private discountUnsubscribe: (() => void) | null = null;
 
   build() {
     Stack() {
@@ -222,7 +264,7 @@ struct MenuPage {
             .textAlign(TextAlign.Center)
             .margin({ left: 8, top: 12 })
             .onClick(() => {
-              router.back();
+              RouteManager.back();
             })
 
           // 店铺图片
@@ -424,7 +466,7 @@ struct MenuPage {
         .padding({ left: 12, right: 12 })
         .justifyContent(FlexAlign.Center)
         .onClick(() => {
-          router.back();
+          RouteManager.back();
         })
 
         // 點餐 Tab
@@ -528,22 +570,15 @@ struct MenuPage {
     .border({ width: { bottom: 0.5 }, color: '#E5E5E5' })
   }
 
-  // 加载中
+  // 加载中 - 使用统一 LoadingView 组件
   @Builder
   LoadingView() {
-    Column() {
-      LoadingProgress()
-        .width(50)
-        .height(50)
-        .color(this.themeColor)
-      Text('載入菜單中...')
-        .fontSize(13)
-        .fontColor('#999999')
-        .margin({ top: 12 })
-    }
-    .width('100%')
-    .layoutWeight(1)
-    .justifyContent(FlexAlign.Center)
+    LoadingView({
+      config: {
+        message: '載入菜單中...',
+        showSpinner: true
+      }
+    })
   }
 
   // 左侧分类列表
@@ -976,35 +1011,21 @@ struct MenuPage {
     .justifyContent(FlexAlign.Center)
   }
 
-  // 订单空状态
+  // 订单空状态 - 使用统一 EmptyState 组件
   @Builder
   OrderEmptyView() {
-    Column() {
-      Text('📋')
-        .fontSize(60)
-        .margin({ bottom: 16 })
-
-      Text('暫無訂單')
-        .fontSize(16)
-        .fontColor('#999999')
-        .margin({ bottom: 24 })
-
-      // 登录/注册按钮（未登录时显示）
-      Button('登入/註冊')
-        .width(140)
-        .height(44)
-        .fontSize(15)
-        .fontColor('#333333')
-        .backgroundColor(this.themeColor)
-        .borderRadius(22)
-        .onClick(() => {
+    EmptyState({
+      config: {
+        icon: '📋',
+        title: '暫無訂單',
+        message: '您還沒有任何訂單記錄',
+        actionText: '登入/註冊',
+        onAction: () => {
           hilog.info(DOMAIN, TAG, 'Navigate to login');
           // TODO: 跳转到登录页面
-        })
-    }
-    .width('100%')
-    .layoutWeight(1)
-    .justifyContent(FlexAlign.Center)
+        }
+      }
+    })
   }
 
   // 订单列表
@@ -1183,12 +1204,8 @@ struct MenuPage {
             .borderRadius(4)
             .padding({ left: 20, right: 20 })
             .onClick(() => {
-              router.pushUrl({
-                url: 'pages/OrderDetailPage',
-                params: {
-                  orderId: parseInt(order.order_id),
-                  themeColor: this.themeColor
-                }
+              RouteManager.navigateToOrderDetail({
+                orderId: order.order_id
               });
             })
         } else {
@@ -1214,12 +1231,8 @@ struct MenuPage {
     .borderRadius(8)
     .margin({ bottom: 10 })
     .onClick(() => {
-      router.pushUrl({
-        url: 'pages/OrderDetailPage',
-        params: {
-          orderId: parseInt(order.order_id),
-          themeColor: this.themeColor
-        }
+      RouteManager.navigateToOrderDetail({
+        orderId: order.order_id
       });
     })
   }
@@ -2289,48 +2302,45 @@ struct MenuPage {
   }
 
   /**
-   * 更新购物车商品数量
+   * Phase 2: 更新购物车商品数量（自动触发 UI 更新）
    */
   private async updateCartItemQuantity(cartItemId: string, quantity: number): Promise<void> {
-    await appState.updateCartItemQuantity(cartItemId, quantity);
-    this.updateCartState();
-  }
-
-  /**
-   * 删除购物车商品
-   */
-  private async removeCartItem(cartItemId: string): Promise<void> {
-    await appState.removeCartItem(cartItemId);
-    this.updateCartState();
+    await cartState.updateItemQuantity(cartItemId, quantity);
     // 如果购物车为空，关闭弹窗
-    if (this.cartCount === 0) {
+    if (cartState.getCount() === 0) {
       this.showCartPopup = false;
     }
   }
 
   /**
-   * 清空购物车
+   * Phase 2: 删除购物车商品（自动触发 UI 更新）
+   */
+  private async removeCartItem(cartItemId: string): Promise<void> {
+    await cartState.removeItem(cartItemId);
+    // 如果购物车为空，关闭弹窗
+    if (cartState.getCount() === 0) {
+      this.showCartPopup = false;
+    }
+  }
+
+  /**
+   * Phase 2: 清空购物车（自动触发 UI 更新）
    */
   private async clearCart(): Promise<void> {
-    await appState.clearCart();
-    this.updateCartState();
+    await cartState.clearCart();
     this.showCartPopup = false;
   }
 
   /**
-   * 前往结算页面
+   * 前往结算页面 - 使用 RouteManager
    */
   private goToCheckout(): void {
     hilog.info(DOMAIN, TAG, 'Go to checkout, total: %{public}d', this.cartTotal);
-    router.pushUrl({
-      url: 'pages/CheckoutPage',
-      params: {
-        orderType: this.orderType,
-        themeColor: this.themeColor,
-        currencySymbol: this.currencySymbol,
-        storeName: this.storeName,
-        storeAddress: this.storeAddress
-      }
+    RouteManager.navigateToCheckout({
+      orderType: this.orderType,
+      hasDiscount: this.hasDiscount,
+      discountRatio: this.discountRatio,
+      discountLabel: this.discountLabel
     });
   }
 
@@ -2464,8 +2474,21 @@ struct MenuPage {
   }
 
   aboutToAppear() {
-    // 初始化购物车状态
-    this.updateCartState();
+    // Phase 2: 订阅购物车状态（自动响应更新）
+    const cartObserver = new CartStateObserver((state: Readonly<CartStateData>) => {
+      this.cartItems = state.items as CartItem[];  // UI 自动更新
+      this.cartCount = state.count;
+      this.cartTotal = state.total;
+    });
+    this.cartUnsubscribe = cartState.subscribe(cartObserver);
+
+    // Phase 2: 订阅折扣状态（自动响应更新）
+    const discountObserver = new DiscountStateObserver((state: Readonly<DiscountStateData>) => {
+      this.hasDiscount = state.hasDiscount;
+      this.discountRatio = state.discountRatio;
+      this.discountLabel = state.discountLabel;
+    });
+    this.discountUnsubscribe = discountState.subscribe(discountObserver);
 
     // 获取顶部安全区域高度（避开胶囊）
     this.getTopSafeHeight();
@@ -2499,15 +2522,14 @@ struct MenuPage {
       if (params['initialTab'] !== undefined) {
         this.currentTab = params['initialTab'] as number;
       }
-      // 折扣信息
-      if (params['hasDiscount'] !== undefined) {
-        this.hasDiscount = params['hasDiscount'] as boolean;
-      }
-      if (params['discountRatio'] !== undefined) {
-        this.discountRatio = params['discountRatio'] as number;
-      }
-      if (params['discountLabel']) {
-        this.discountLabel = params['discountLabel'] as string;
+      // Phase 2: 折扣信息（更新 discountState，自动触发订阅者）
+      if (params['hasDiscount'] !== undefined || params['discountRatio'] !== undefined || params['discountLabel']) {
+        discountState.updateDiscount({
+          hasDiscount: params['hasDiscount'] !== undefined ? params['hasDiscount'] as boolean : undefined,
+          discountRatio: params['discountRatio'] !== undefined ? params['discountRatio'] as number : undefined,
+          discountLabel: params['discountLabel'] ? params['discountLabel'] as string : undefined,
+          appliedOrderType: OrderType.PICKUP
+        });
       }
     }
 
@@ -2524,6 +2546,21 @@ struct MenuPage {
       // 点餐Tab
       this.loadMenuData();
     }
+  }
+
+  /**
+   * Phase 2: 清理响应式状态订阅
+   */
+  aboutToDisappear() {
+    if (this.cartUnsubscribe) {
+      this.cartUnsubscribe();
+      this.cartUnsubscribe = null;
+    }
+    if (this.discountUnsubscribe) {
+      this.discountUnsubscribe();
+      this.discountUnsubscribe = null;
+    }
+    hilog.info(DOMAIN, TAG, 'MenuPage unsubscribed from reactive states');
   }
 
   /**
@@ -2686,50 +2723,54 @@ struct MenuPage {
   /**
    * 获取产品优惠价格（格式化为小数点后1位）
    */
+  /**
+   * 获取折扣价格 - 使用 DiscountManager
+   */
   private getDiscountPrice(product: Product): string {
     const originalPrice = parseFloat(this.getPrice(product));
-    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
-      const discountPrice = originalPrice * this.discountRatio;
-      return discountPrice.toFixed(1);
-    }
-    return originalPrice.toFixed(0);
+    const discountPrice = DiscountManager.calculateDiscountPrice(
+      originalPrice,
+      this.orderType,
+      this.discountRatio
+    );
+    return this.hasDiscount && this.orderType === OrderType.PICKUP ?
+      discountPrice.toFixed(1) : originalPrice.toFixed(0);
   }
 
   /**
-   * 获取折扣标签文字
+   * 获取折扣标签文字 - 使用 DiscountManager
    */
   private getDiscountLabel(): string {
-    if (this.orderType === OrderType.PICKUP && this.hasDiscount) {
-      // 优先使用API提供的标签文本
-      if (this.discountLabel) {
-        return `外賣自取${this.discountLabel}`;
-      }
-      // Fallback: 根据折扣率生成标签
-      const discount = Math.round((1 - this.discountRatio) * 10);
-      return `外賣自取${10 - discount}折優惠`;
+    if (!DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount)) {
+      return '';
     }
-    return '';
+    return DiscountManager.getDiscountBadgeText(
+      this.discountLabel || DiscountManager.formatDiscountLabel(this.discountRatio)
+    );
   }
 
   /**
-   * 计算购物车折扣后总价
+   * 计算购物车折扣后总价 - 使用 DiscountManager
    */
   private getCartDiscountTotal(): number {
-    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
-      return this.cartTotal * this.discountRatio;
-    }
-    return this.cartTotal;
+    return DiscountManager.calculateDiscountPrice(
+      this.cartTotal,
+      this.orderType,
+      this.discountRatio
+    );
   }
 
   /**
-   * 计算商品详情页折扣后总价（字符串格式）
+   * 计算商品详情页折扣后总价（字符串格式） - 使用 DiscountManager
    */
   private calculateDiscountTotalPrice(): string {
     const originalTotal = parseFloat(this.calculateTotalPrice());
-    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
-      return (originalTotal * this.discountRatio).toFixed(0);
-    }
-    return originalTotal.toFixed(0);
+    const discountTotal = DiscountManager.calculateDiscountPrice(
+      originalTotal,
+      this.orderType,
+      this.discountRatio
+    );
+    return discountTotal.toFixed(0);
   }
 
   /**
@@ -3134,11 +3175,8 @@ struct MenuPage {
       return;
     }
 
-    // 添加到购物车
-    await appState.addToCart(cartItem);
-
-    // 更新购物车状态
-    this.updateCartState();
+    // Phase 2: 添加到购物车（自动触发 UI 更新，无需手动 updateCartState）
+    await cartState.addItem(cartItem);
 
     hilog.info(DOMAIN, TAG, 'Add to cart: %{public}s x%{public}d, total: %{public}s',
       this.selectedProduct.local_name, this.quantity, this.calculateTotalPrice());
@@ -3443,14 +3481,6 @@ struct MenuPage {
     return parts.join(' | ');
   }
 
-  /**
-   * 更新购物车状态
-   */
-  private updateCartState(): void {
-    this.cartItems = appState.cartItems.slice();
-    this.cartCount = appState.cartCount;
-    this.cartTotal = appState.cartTotal;
-  }
 
   /**
    * 显示店铺详情

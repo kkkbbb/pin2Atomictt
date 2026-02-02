@@ -4,6 +4,11 @@ import { authentication } from '@kit.AccountKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { apiService, ApiConfig } from '../services/ApiService';
 import { Coupon, CouponListData } from '../models/StoreModels';
+// 新增导入：公共组件和工具类
+import { LoadingView } from '../components/common/LoadingView';
+import { EmptyState } from '../components/common/EmptyState';
+import { TabBar, TabItem } from '../components/common/TabBar';
+import { RouteManager } from '../utils/RouteManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'CouponPage';
@@ -70,7 +75,7 @@ struct CouponPage {
           .fontColor($r('app.color.text_primary'))
           .textAlign(TextAlign.Center)
           .onClick(() => {
-            router.back();
+            RouteManager.back();
           })
 
         Blank()
@@ -86,81 +91,33 @@ struct CouponPage {
     .padding({ top: this.topSafeHeight + 8 })
   }
 
-  // Tab栏
+  // Tab栏 - 使用统一 TabBar 组件
   @Builder
   TabBar() {
-    Row() {
-      // 优惠券Tab
-      Column() {
-        Text(`優惠券(${this.couponCount})`)
-          .fontSize(15)
-          .fontColor(this.currentTab === CouponTabType.COUPON ?
-            $r('app.color.text_primary') : $r('app.color.text_hint'))
-          .fontWeight(this.currentTab === CouponTabType.COUPON ?
-            FontWeight.Medium : FontWeight.Normal)
-
-        // 底部指示线
-        Column()
-          .width(50)
-          .height(2)
-          .backgroundColor(this.currentTab === CouponTabType.COUPON ?
-            this.themeColor : Color.Transparent)
-          .margin({ top: 10 })
-          .borderRadius(1)
+    TabBar({
+      config: {
+        tabs: [
+          { id: CouponTabType.COUPON, label: '優惠券', badge: this.couponCount },
+          { id: CouponTabType.VOUCHER, label: '兌換券', badge: this.voucherCount }
+        ],
+        selectedId: this.currentTab,
+        activeColor: this.themeColor,
+        onTabChange: (id: string | number) => {
+          this.currentTab = id as CouponTabType;
+        }
       }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Center)
-      .padding({ top: 14, bottom: 6 })
-      .onClick(() => {
-        this.currentTab = CouponTabType.COUPON;
-      })
-
-      // 兑换券Tab
-      Column() {
-        Text(`兌換券(${this.voucherCount})`)
-          .fontSize(15)
-          .fontColor(this.currentTab === CouponTabType.VOUCHER ?
-            $r('app.color.text_primary') : $r('app.color.text_hint'))
-          .fontWeight(this.currentTab === CouponTabType.VOUCHER ?
-            FontWeight.Medium : FontWeight.Normal)
-
-        // 底部指示线
-        Column()
-          .width(50)
-          .height(2)
-          .backgroundColor(this.currentTab === CouponTabType.VOUCHER ?
-            this.themeColor : Color.Transparent)
-          .margin({ top: 10 })
-          .borderRadius(1)
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Center)
-      .padding({ top: 14, bottom: 6 })
-      .onClick(() => {
-        this.currentTab = CouponTabType.VOUCHER;
-      })
-    }
-    .width('100%')
-    .backgroundColor(Color.White)
-    .border({ width: { bottom: 1 }, color: '#F0F0F0' })
+    })
   }
 
-  // 加载中视图
+  // 加载中视图 - 使用统一 LoadingView 组件
   @Builder
   LoadingView() {
-    Column() {
-      LoadingProgress()
-        .width(50)
-        .height(50)
-        .color(this.themeColor)
-      Text('載入中...')
-        .fontSize(14)
-        .fontColor($r('app.color.text_hint'))
-        .margin({ top: 12 })
-    }
-    .width('100%')
-    .layoutWeight(1)
-    .justifyContent(FlexAlign.Center)
+    LoadingView({
+      config: {
+        message: '載入中...',
+        showSpinner: true
+      }
+    })
   }
 
   // 未登录提示视图
@@ -357,29 +314,15 @@ struct CouponPage {
     })
   }
 
-  // 空状态视图
+  // 空状态视图 - 使用统一 EmptyState 组件
   @Builder
   EmptyView(message: string) {
-    Column() {
-      // 空状态图标
-      Column() {
-        Text('🎫')
-          .fontSize(48)
+    EmptyState({
+      config: {
+        icon: '🎫',
+        title: message
       }
-      .width(80)
-      .height(80)
-      .justifyContent(FlexAlign.Center)
-      .backgroundColor('#F5F5F5')
-      .borderRadius(40)
-
-      Text(message)
-        .fontSize(14)
-        .fontColor($r('app.color.text_hint'))
-        .margin({ top: 16 })
-    }
-    .width('100%')
-    .layoutWeight(1)
-    .justifyContent(FlexAlign.Center)
+    })
   }
 
   /**

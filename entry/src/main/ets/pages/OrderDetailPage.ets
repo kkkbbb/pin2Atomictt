@@ -11,6 +11,8 @@ import {
   PayOrderParams,
   PayMethodItem
 } from '../models/StoreModels';
+// 新增导入：工具类
+import { RouteManager } from '../utils/RouteManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'OrderDetailPage';
@@ -36,10 +38,14 @@ struct OrderDetailPage {
   private webController: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear(): void {
-    const params = router.getParams() as Record<string, Object>;
+    // 使用 RouteManager 获取路由参数
+    const params: ESObject | null = RouteManager.getParams<ESObject>();
     if (params) {
       if (params['orderId'] !== undefined) {
-        this.orderId = params['orderId'] as number;
+        // orderId 从 MenuPage 传递过来是字符串
+        const orderIdParam: string | number = params['orderId'] as string | number;
+        this.orderId = typeof orderIdParam === 'string' ?
+          parseInt(orderIdParam) : orderIdParam;
       }
       if (params['themeColor']) {
         this.themeColor = params['themeColor'] as string;
@@ -218,18 +224,12 @@ struct OrderDetailPage {
 
   // 返回菜单页
   goBack(): void {
-    router.back();
+    RouteManager.back();
   }
 
-  // 重新落单 - 返回菜单页
+  // 重新落单 - 返回菜单页 - 使用 RouteManager
   reorder(): void {
-    router.pushUrl({
-      url: 'pages/MenuPage',
-      params: {
-        initialTab: 1,
-        themeColor: this.themeColor
-      }
-    });
+    RouteManager.back();
   }
 
   // 获取所有商品列表（兼容两种 API 返回格式）

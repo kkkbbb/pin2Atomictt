@@ -13,6 +13,13 @@ import {
   OrderAdjustItem
 } from '../models/StoreModels';
 import { AppConfig } from '../config/AppConfig';
+// 新增导入：工具类
+import { DiscountManager } from '../utils/DiscountManager';
+import { RouteManager } from '../utils/RouteManager';
+// Phase 2: 响应式状态管理
+import { cartState, CartStateData } from '../store/modules/CartState';
+import { discountState, DiscountStateData } from '../store/modules/DiscountState';
+import { StateObserver } from '../store/observers/StateObserver';
 
 const DOMAIN = 0x0000;
 const TAG = 'CheckoutPage';
@@ -23,6 +30,36 @@ const TAG = 'CheckoutPage';
 interface AreaCode {
   code: string;
   name: string;
+}
+
+/**
+ * ArkTS 兼容：购物车状态观察者
+ */
+class CartStateObserver implements StateObserver<CartStateData> {
+  private callback: (state: Readonly<CartStateData>) => void;
+
+  constructor(callback: (state: Readonly<CartStateData>) => void) {
+    this.callback = callback;
+  }
+
+  onStateChange(newState: Readonly<CartStateData>): void {
+    this.callback(newState);
+  }
+}
+
+/**
+ * ArkTS 兼容：折扣状态观察者
+ */
+class DiscountStateObserver implements StateObserver<DiscountStateData> {
+  private callback: (state: Readonly<DiscountStateData>) => void;
+
+  constructor(callback: (state: Readonly<DiscountStateData>) => void) {
+    this.callback = callback;
+  }
+
+  onStateChange(newState: Readonly<DiscountStateData>): void {
+    this.callback(newState);
+  }
 }
 
 @Entry
@@ -38,10 +75,11 @@ struct CheckoutPage {
   @State storeName: string = '';
   @State storeAddress: string = '';
 
-  // 购物车数据
+  // 购物车数据（Phase 2: 响应式状态）
   @State cartItems: CartItem[] = [];
   @State cartTotal: number = 0;
   @State cartCount: number = 0;
+  private cartUnsubscribe: (() => void) | null = null;
 
   // 费用明细
   @State boxFee: number = 0;         // 餐盒费（从购物车商品获取，0表示无餐盒费）
@@ -49,12 +87,13 @@ struct CheckoutPage {
   @State voucherDiscount: number = 0; // 兑换券折扣
   @State couponDiscount: number = 0;  // 优惠券折扣
 
-  // 折扣信息
+  // 折扣信息（Phase 2: 响应式状态）
   @State hasDiscount: boolean = false;  // 是否有折扣
   @State discountRate: number = 1.0;    // 折扣率（0.9=九折）
   @State discountName: string = '';     // 折扣名称
   @State subtotalBeforeDiscount: number = 0;  // 折扣前小计
   @State discountAmount: number = 0;    // 折扣金额
+  private discountUnsubscribe: (() => void) | null = null;
 
   // 联系信息
   @State email: string = '';
@@ -76,8 +115,8 @@ struct CheckoutPage {
   @State isSubmitting: boolean = false;
 
   aboutToAppear() {
-    // 获取路由参数
-    const params = router.getParams() as Record<string, Object>;
+    // 获取路由参数 - 使用 RouteManager
+    const params: ESObject | null = RouteManager.getParams<ESObject>();
     if (params) {
       if (params['orderType']) {
         this.orderType = params['orderType'] as OrderType;
@@ -96,8 +135,40 @@ struct CheckoutPage {
       }
     }
 
+    // Phase 2: 订阅购物车状态
+    const cartObserver = new CartStateObserver((state) => {
+      this.cartItems = state.items as CartItem[];
+      this.cartCount = state.count;
+      this.cartTotal = state.total;
+      // 重新计算餐盒费和折扣
+      this.recalculateBoxFee();
+      this.recalculateDiscount();
+    });
+    this.cartUnsubscribe = cartState.subscribe(cartObserver);
+
+    // Phase 2: 订阅折扣状态
+    const discObserver = new DiscountStateObserver((state) => {
+      this.hasDiscount = state.hasDiscount;
+      this.discountRate = state.discountRatio;
+      this.discountName = state.discountLabel;
+      this.recalculateDiscount();
+    });
+    this.discountUnsubscribe = discountState.subscribe(discObserver);
+
     this.loadData();
     this.getTopSafeHeight();
+  }
+
+  aboutToDisappear() {
+    // Phase 2: 清理订阅
+    if (this.cartUnsubscribe) {
+      this.cartUnsubscribe();
+      this.cartUnsubscribe = null;
+    }
+    if (this.discountUnsubscribe) {
+      this.discountUnsubscribe();
+      this.discountUnsubscribe = null;
+    }
   }
 
   private async getTopSafeHeight(): Promise<void> {
@@ -112,12 +183,22 @@ struct CheckoutPage {
   }
 
   private async loadData(): Promise<void> {
-    // 加载购物车数据
-    this.cartItems = appState.cartItems;
-    this.cartTotal = appState.cartTotal;
-    this.cartCount = appState.cartCount;
+    // Phase 2: 购物车数据通过响应式订阅自动加载（见 aboutToAppear）
+    // 计算餐盒费
+    this.recalculateBoxFee();
 
-    // 计算餐盒费（外卖自取时收取，餐盒费 = 单价 × 商品数量）
+    // 从API获取店铺信息（用于补充店铺名称和地址）
+    await this.loadStoreInfo();
+
+    this.isLoading = false;
+    hilog.info(DOMAIN, TAG, 'Checkout page loaded: %{public}d items, total: %{public}d, discount: %{public}f',
+      this.cartCount, this.cartTotal, this.discountRate);
+  }
+
+  /**
+   * 重新计算餐盒费（响应式更新）
+   */
+  private recalculateBoxFee(): void {
     this.boxFee = 0;
     this.boxInfo = null;
     if (this.orderType === OrderType.PICKUP) {
@@ -131,13 +212,20 @@ struct CheckoutPage {
         }
       }
     }
+  }
 
-    // 从API获取店铺信息和折扣信息
-    await this.loadStoreInfo();
-
-    this.isLoading = false;
-    hilog.info(DOMAIN, TAG, 'Cart loaded: %{public}d items, total: %{public}d, discount: %{public}f',
-      this.cartCount, this.cartTotal, this.discountRate);
+  /**
+   * 重新计算折扣金额（响应式更新）
+   */
+  private recalculateDiscount(): void {
+    if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
+      // 计算折扣前小计和折扣金额
+      this.subtotalBeforeDiscount = this.cartTotal + this.boxFee;
+      this.discountAmount = this.subtotalBeforeDiscount * (1 - this.discountRate);
+    } else {
+      this.subtotalBeforeDiscount = 0;
+      this.discountAmount = 0;
+    }
   }
 
   /**
@@ -155,8 +243,7 @@ struct CheckoutPage {
           this.storeAddress = config.address || '';
         }
 
-        // 加载折扣信息
-        this.loadDiscountInfo(config);
+        // Phase 2: 折扣信息通过 discountState 管理，无需在此加载
 
         hilog.info(DOMAIN, TAG, 'Store info loaded: %{public}s', this.storeName);
       }
@@ -165,40 +252,17 @@ struct CheckoutPage {
     }
   }
 
-  /**
-   * 加载折扣信息
-   */
-  private loadDiscountInfo(config: Record<string, ESObject>): void {
-    // 检查是否有折扣
-    if (config.has_discount === 1 && config.extend?.order_adjust_amount?.data) {
-      const adjustData = config.extend.order_adjust_amount.data as OrderAdjustItem[];
-      // 查找百分比折扣（type=1）
-      const percentDiscount: OrderAdjustItem | undefined = adjustData.find((item: OrderAdjustItem): boolean => item.type === 1 && item.ext?.ratio !== undefined);
-      if (percentDiscount && percentDiscount.ext.ratio !== undefined) {
-        this.hasDiscount = true;
-        this.discountRate = percentDiscount.ext.ratio;  // 如0.9表示九折
-        this.discountName = percentDiscount.name || '外賣自取九折優惠';
-
-        // 计算折扣前小计和折扣金额
-        this.subtotalBeforeDiscount = this.cartTotal + this.boxFee;
-        this.discountAmount = this.subtotalBeforeDiscount * (1 - this.discountRate);
-
-        hilog.info(DOMAIN, TAG, 'Discount loaded: rate=%{public}f, amount=%{public}f',
-          this.discountRate, this.discountAmount);
-      }
-    }
-  }
-
-  // 获取总计金额（应用折扣后的实付金额）
+  // 获取总计金额（应用折扣后的实付金额） - 使用 DiscountManager
   private getTotalAmount(): number {
     // 计算小计（商品总价 + 餐盒费）
     const subtotal = this.cartTotal + this.boxFee;
 
-    // 应用折扣
-    let discountedSubtotal = subtotal;
-    if (this.hasDiscount && this.discountRate < 1) {
-      discountedSubtotal = subtotal * this.discountRate;
-    }
+    // 应用折扣 - 使用 DiscountManager
+    const discountedSubtotal = DiscountManager.calculateDiscountPrice(
+      subtotal,
+      this.orderType,
+      this.discountRate
+    );
 
     // 减去兑换券和优惠券
     return discountedSubtotal - this.voucherDiscount - this.couponDiscount;
@@ -220,12 +284,12 @@ struct CheckoutPage {
 
   // 返回上一页
   private goBack(): void {
-    router.back();
+    RouteManager.back();
   }
 
   // 修改菜品（返回菜单页）
   private modifyItems(): void {
-    router.back();
+    RouteManager.back();
   }
 
   // 提交订单
@@ -299,16 +363,12 @@ struct CheckoutPage {
         hilog.info(DOMAIN, TAG, 'Order submitted successfully: order_id=%{public}d',
           response.data.order_id);
 
-        // 清空购物车
-        await appState.clearCart();
+        // Phase 2: 清空购物车（使用响应式状态）
+        await cartState.clearCart();
 
-        // 跳转到订单详情页进行支付
-        router.pushUrl({
-          url: 'pages/OrderDetailPage',
-          params: {
-            orderId: response.data.order_id,
-            themeColor: this.themeColor
-          }
+        // 跳转到订单详情页进行支付 - 使用 RouteManager
+        RouteManager.navigateToOrderDetail({
+          orderId: response.data.order_id.toString()
         });
       } else {
         hilog.error(DOMAIN, TAG, 'Order submit failed: %{public}s', response.msg);
@@ -728,8 +788,8 @@ struct CheckoutPage {
 
       // 价格和数量
       Column() {
-        // 如果有折扣，显示原价和折后价
-        if (this.hasDiscount && this.discountRate < 1) {
+        // 如果有折扣，显示原价和折后价 - 使用 DiscountManager
+        if (DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount)) {
           Row() {
             // 原价（删除线）
             Text(`${this.currencySymbol}${item.unitPrice.toFixed(0)}`)
@@ -738,8 +798,8 @@ struct CheckoutPage {
               .decoration({ type: TextDecorationType.LineThrough, color: '#999999' })
               .margin({ right: 4 })
 
-            // 折后价
-            Text(`${this.currencySymbol}${(item.unitPrice * this.discountRate).toFixed(0)}`)
+            // 折后价 - 使用 DiscountManager
+            Text(`${this.currencySymbol}${DiscountManager.calculateDiscountPrice(item.unitPrice, this.orderType, this.discountRate).toFixed(0)}`)
               .fontSize(14)
               .fontWeight(FontWeight.Medium)
               .fontColor('#FF6B00')
@@ -798,8 +858,8 @@ struct CheckoutPage {
 
       Divider().color('#F5F5F5').strokeWidth(1)
 
-      // 折扣信息
-      if (this.hasDiscount && this.discountRate < 1) {
+      // 折扣信息 - 使用 DiscountManager
+      if (DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount)) {
         Row() {
           Column() {
             Text(this.discountName)

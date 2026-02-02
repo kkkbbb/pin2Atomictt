@@ -3,6 +3,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { appState } from '../services/AppStorage';
 import { apiService } from '../services/ApiService';
+// Phase 2: 响应式状态管理
+import { cartState } from '../store/modules/CartState';
 
 const DOMAIN = 0x0000;
 const TAG = 'EntryAbility';
@@ -11,8 +13,11 @@ export default class EntryAbility extends UIAbility {
   async onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): Promise<void> {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
 
-    // 初始化全局状态管理器
+    // 初始化全局状态管理器（保留兼容性）
     await appState.init(this.context);
+
+    // Phase 2: 初始化响应式购物车状态
+    await cartState.init(this.context);
 
     // 如果有保存的token，设置到API服务
     if (appState.token) {
