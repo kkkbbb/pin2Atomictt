@@ -16,6 +16,7 @@ import { AppConfig } from '../config/AppConfig';
 // 新增导入：工具类
 import { DiscountManager } from '../utils/DiscountManager';
 import { RouteManager } from '../utils/RouteManager';
+import { PriceTransformer } from '../types/transformers/PriceTransformer';
 // Phase 2: 响应式状态管理
 import { cartState, CartStateData } from '../store/modules/CartState';
 import { discountState, DiscountStateData } from '../store/modules/DiscountState';
@@ -91,6 +92,7 @@ struct CheckoutPage {
   @State hasDiscount: boolean = false;  // 是否有折扣
   @State discountRate: number = 1.0;    // 折扣率（0.9=九折）
   @State discountName: string = '';     // 折扣名称
+  @State activityId: string | null = null;  // 活动 ID
   @State subtotalBeforeDiscount: number = 0;  // 折扣前小计
   @State discountAmount: number = 0;    // 折扣金额
   private discountUnsubscribe: (() => void) | null = null;
@@ -151,9 +153,17 @@ struct CheckoutPage {
       this.hasDiscount = state.hasDiscount;
       this.discountRate = state.discountRatio;
       this.discountName = state.discountLabel;
+      this.activityId = state.activityId;
       this.recalculateDiscount();
     });
     this.discountUnsubscribe = discountState.subscribe(discObserver);
+
+    // 立即从 discountState 读取当前值（防止订阅时状态未初始化）
+    const currentDiscountState = discountState.value;
+    this.hasDiscount = currentDiscountState.hasDiscount;
+    this.discountRate = currentDiscountState.discountRatio;
+    this.discountName = currentDiscountState.discountLabel;
+    this.activityId = currentDiscountState.activityId;
 
     this.loadData();
     this.getTopSafeHeight();
@@ -216,12 +226,13 @@ struct CheckoutPage {
 
   /**
    * 重新计算折扣金额（响应式更新）
+   * 注意：折扣只应用到商品总价，餐盒费不计入折扣
    */
   private recalculateDiscount(): void {
     if (this.hasDiscount && this.orderType === OrderType.PICKUP) {
-      // 计算折扣前小计和折扣金额
-      this.subtotalBeforeDiscount = this.cartTotal + this.boxFee;
-      this.discountAmount = this.subtotalBeforeDiscount * (1 - this.discountRate);
+      // 折扣只应用到商品总价，不包括餐盒费
+      this.subtotalBeforeDiscount = this.cartTotal;
+      this.discountAmount = this.cartTotal * (1 - this.discountRate);
     } else {
       this.subtotalBeforeDiscount = 0;
       this.discountAmount = 0;
@@ -253,19 +264,17 @@ struct CheckoutPage {
   }
 
   // 获取总计金额（应用折扣后的实付金额） - 使用 DiscountManager
+  // 注意：折扣只应用到商品总价，餐盒费不计入折扣
   private getTotalAmount(): number {
-    // 计算小计（商品总价 + 餐盒费）
-    const subtotal = this.cartTotal + this.boxFee;
-
-    // 应用折扣 - 使用 DiscountManager
-    const discountedSubtotal = DiscountManager.calculateDiscountPrice(
-      subtotal,
+    // 折扣只应用到商品总价 - 使用 DiscountManager
+    const discountedCartTotal = DiscountManager.calculateDiscountPrice(
+      this.cartTotal,
       this.orderType,
       this.discountRate
     );
 
-    // 减去兑换券和优惠券
-    return discountedSubtotal - this.voucherDiscount - this.couponDiscount;
+    // 总额 = 折扣后的商品总价 + 餐盒费 - 兑换券 - 优惠券
+    return discountedCartTotal + this.boxFee - this.voucherDiscount - this.couponDiscount;
   }
 
   // 获取订单类型文本
@@ -319,9 +328,26 @@ struct CheckoutPage {
     this.isSubmitting = true;
     hilog.info(DOMAIN, TAG, 'Submitting order, total: %{public}d', this.getTotalAmount());
 
+    // Debug: 打印折扣和购物车信息
+    hilog.info(DOMAIN, TAG, 'Debug - hasDiscount: %{public}s, discountRate: %{public}f, cartTotal: %{public}f',
+      this.hasDiscount, this.discountRate, this.cartTotal);
+    hilog.info(DOMAIN, TAG, 'Debug - cartItems count: %{public}d', this.cartItems.length);
+    for (let i = 0; i < this.cartItems.length; i++) {
+      const item = this.cartItems[i];
+      hilog.info(DOMAIN, TAG, 'Debug - item[%{public}d]: productId=%{public}s, activityId=%{public}s, basePrice=%{public}f',
+        i, item.productId, item.activityId || 'null', item.basePrice);
+    }
+
     try {
       // 构建订单商品数据
       const products: OrderProduct[] = this.buildOrderProducts();
+
+      // 计算活动折扣金额（商品原价 - 折扣后价格）
+      const activityDiscountTotal = DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount)
+        ? this.cartTotal * (1 - this.discountRate)
+        : 0;
+
+      hilog.info(DOMAIN, TAG, 'Debug - activityDiscountTotal: %{public}f', activityDiscountTotal);
 
       // 构建订单请求
       const orderRequest: AddOrderRequest = {
@@ -335,7 +361,7 @@ struct CheckoutPage {
         products: products,
         total: this.getTotalAmount().toFixed(4),
         discount_total: 0,
-        activity_discount_total: 0,
+        activity_discount_total: parseFloat(activityDiscountTotal.toFixed(2)),
         seat_fee: 0,
         service_fee: '0.0000',
         email: this.email,
@@ -565,7 +591,7 @@ struct CheckoutPage {
         condiments: condiments,
         quantity: cartItem.quantity,
         price: cartItem.basePrice,
-        activity_id: null,
+        activity_id: cartItem.activityId || null,  // 使用商品自带的 activity_id
         box: boxInfo,
         store_id: AppConfig.DEFAULT_STORE_ID,
         dine_in_takeout: 0,
@@ -799,7 +825,7 @@ struct CheckoutPage {
               .margin({ right: 4 })
 
             // 折后价 - 使用 DiscountManager
-            Text(`${this.currencySymbol}${DiscountManager.calculateDiscountPrice(item.unitPrice, this.orderType, this.discountRate).toFixed(0)}`)
+            Text(PriceTransformer.formatDisplay(DiscountManager.calculateDiscountPrice(item.unitPrice, this.orderType, this.discountRate), this.currencySymbol))
               .fontSize(14)
               .fontWeight(FontWeight.Medium)
               .fontColor('#FF6B00')
@@ -828,35 +854,22 @@ struct CheckoutPage {
   @Builder
   FeeDetailSection() {
     Column() {
-      // 小计（商品总价 + 餐盒费）
-      Row() {
-        Text('小計')
-          .fontSize(14)
-          .fontColor('#333333')
-        Blank()
-        Text(`${this.currencySymbol}${(this.cartTotal + this.boxFee).toFixed(0)}`)
-          .fontSize(14)
-          .fontColor('#333333')
-      }
-      .width('100%')
-      .padding({ top: 14, bottom: 14 })
-
       // 餐盒费明细（只有当商家配置了餐盒费时才显示）
       if (this.boxFee > 0) {
         Row() {
-          Text('  • 餐盒費')
-            .fontSize(12)
-            .fontColor('#999999')
+          Text('餐盒費')
+            .fontSize(14)
+            .fontColor('#333333')
           Blank()
-          Text(`${this.currencySymbol}${this.boxFee.toFixed(0)}`)
-            .fontSize(12)
-            .fontColor('#999999')
+          Text(PriceTransformer.formatDisplay(this.boxFee, this.currencySymbol))
+            .fontSize(14)
+            .fontColor('#333333')
         }
         .width('100%')
-        .padding({ top: 4, bottom: 4 })
-      }
+        .padding({ top: 14, bottom: 14 })
 
-      Divider().color('#F5F5F5').strokeWidth(1)
+        Divider().color('#F5F5F5').strokeWidth(1)
+      }
 
       // 折扣信息 - 使用 DiscountManager
       if (DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount)) {
@@ -875,7 +888,7 @@ struct CheckoutPage {
 
           Blank()
 
-          Text(`-${this.currencySymbol}${this.discountAmount.toFixed(0)}`)
+          Text('-' + PriceTransformer.formatDisplay(this.discountAmount, this.currencySymbol))
             .fontSize(14)
             .fontColor('#FF6B00')
             .fontWeight(FontWeight.Medium)
@@ -895,7 +908,7 @@ struct CheckoutPage {
           .fontSize(14)
           .fontColor('#333333')
         Blank()
-        Text(this.voucherDiscount > 0 ? `-${this.currencySymbol}${this.voucherDiscount.toFixed(0)}` : '無可用兌換券')
+        Text(this.voucherDiscount > 0 ? '-' + PriceTransformer.formatDisplay(this.voucherDiscount, this.currencySymbol) : '無可用兌換券')
           .fontSize(14)
           .fontColor(this.voucherDiscount > 0 ? '#333333' : '#999999')
           .fontWeight(this.voucherDiscount > 0 ? FontWeight.Medium : FontWeight.Normal)
@@ -923,7 +936,7 @@ struct CheckoutPage {
 
         Blank()
 
-        Text(this.couponDiscount > 0 ? `-${this.currencySymbol}${this.couponDiscount.toFixed(0)}` : '無可用優惠券')
+        Text(this.couponDiscount > 0 ? '-' + PriceTransformer.formatDisplay(this.couponDiscount, this.currencySymbol) : '無可用優惠券')
           .fontSize(14)
           .fontColor(this.couponDiscount > 0 ? '#333333' : '#999999')
           .fontWeight(this.couponDiscount > 0 ? FontWeight.Medium : FontWeight.Normal)
@@ -945,7 +958,7 @@ struct CheckoutPage {
         .fontSize(14)
         .fontColor('#666666')
 
-      Text(` ${this.currencySymbol}${this.getTotalAmount().toFixed(0)}`)
+      Text(' ' + PriceTransformer.formatDisplay(this.getTotalAmount(), this.currencySymbol))
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.themeColor)
@@ -1111,7 +1124,7 @@ struct CheckoutPage {
         Text('總計 ')
           .fontSize(14)
           .fontColor('#333333')
-        Text(`${this.currencySymbol}${this.getTotalAmount().toFixed(0)}`)
+        Text(PriceTransformer.formatDisplay(this.getTotalAmount(), this.currencySymbol))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor('#333333')

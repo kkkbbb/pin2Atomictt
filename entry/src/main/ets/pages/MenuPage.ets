@@ -36,6 +36,7 @@ import { LoadingView, SkeletonType } from '../components/common/LoadingView';
 import { EmptyState } from '../components/common/EmptyState';
 import { DiscountManager } from '../utils/DiscountManager';
 import { RouteManager } from '../utils/RouteManager';
+import { PriceTransformer } from '../types/transformers/PriceTransformer';
 // Phase 2: 响应式状态管理
 import { cartState, CartStateData } from '../store/modules/CartState';
 import { discountState, DiscountStateData } from '../store/modules/DiscountState';
@@ -2113,7 +2114,7 @@ struct MenuPage {
           .margin({ right: 4 })
 
         // 优惠后总价
-        Text(`${this.currencySymbol}${this.getCartDiscountTotal().toFixed(0)}`)
+        Text(PriceTransformer.formatDisplay(this.getCartDiscountTotal(), this.currencySymbol))
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor('#333333')
@@ -2247,8 +2248,13 @@ struct MenuPage {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      // 价格
-      Text(`${this.currencySymbol}${item.unitPrice.toFixed(0)}`)
+      // 价格（使用 PriceTransformer 智能显示）
+      Text(PriceTransformer.formatDisplay(
+        DiscountManager.shouldApplyDiscount(this.orderType, this.hasDiscount) ?
+        DiscountManager.calculateDiscountPrice(item.unitPrice, this.orderType, this.discountRatio) :
+        item.unitPrice,
+        this.currencySymbol
+      ))
         .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.themeColor)
@@ -2651,6 +2657,13 @@ struct MenuPage {
         hilog.info(DOMAIN, TAG, 'Menu loaded: %{public}d groups, %{public}d menu_groups',
           this.allProductGroups.length, this.menuGroups.length);
 
+        // Debug: 打印第一个商品的 activity_id
+        if (this.allProductGroups.length > 0 && this.allProductGroups[0].products.length > 0) {
+          const firstProduct = this.allProductGroups[0].products[0];
+          hilog.info(DOMAIN, TAG, 'Debug - First product: id=%{public}s, name=%{public}s, activity_id=%{public}s',
+            firstProduct.product_id, firstProduct.local_name, firstProduct.activity_id || 'undefined');
+        }
+
         // 根据当前选中的顶级分组过滤显示的二级分组
         this.filterProductGroups();
       }
@@ -2733,8 +2746,8 @@ struct MenuPage {
       this.orderType,
       this.discountRatio
     );
-    return this.hasDiscount && this.orderType === OrderType.PICKUP ?
-      discountPrice.toFixed(1) : originalPrice.toFixed(0);
+    const finalPrice = this.hasDiscount && this.orderType === OrderType.PICKUP ? discountPrice : originalPrice;
+    return PriceTransformer.formatDisplay(finalPrice, '').replace(/^\$/, '');
   }
 
   /**
@@ -2770,7 +2783,7 @@ struct MenuPage {
       this.orderType,
       this.discountRatio
     );
-    return discountTotal.toFixed(0);
+    return PriceTransformer.formatDisplay(discountTotal, '').replace(/^\$/, '');
   }
 
   /**
@@ -3445,7 +3458,8 @@ struct MenuPage {
       quantity: this.quantity,
       unitPrice: unitPrice,
       specDescription: specDescription,
-      boxInfo: boxInfo
+      boxInfo: boxInfo,
+      activityId: this.selectedProduct.activity_id || undefined
     };
     return cartItem;
   }
