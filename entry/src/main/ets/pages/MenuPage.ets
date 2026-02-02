@@ -3441,7 +3441,7 @@ struct MenuPage {
         localName: box.local_name,
         enName: box.en_name,
         price: parseFloat(box.price || '0')
-      };
+      } as CartBoxInfo;
     }
 
     const cartItem: CartItemInput = {

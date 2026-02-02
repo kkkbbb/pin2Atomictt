@@ -213,6 +213,7 @@ export interface Product {
   prices: ProductPrice[];
   condiment_group: CondimentGroupDetail[];  // 配料选择（甜度、冰量等）
   box?: ProductBox;                         // 外卖盒（餐盒费）
+  activity_id?: string;                      // 活动ID（用于折扣等营销活动）
 }
 
 /**
@@ -471,6 +472,7 @@ export interface ProductDetail {
   box?: ProductBox;                    // 外卖盒
   condiment_group?: CondimentGroupDetail[];  // 配料选择（甜度、冰量等）
   images?: string[];
+  activity_id?: string;                // 活动ID（用于折扣等营销活动）
 }
 
 /**

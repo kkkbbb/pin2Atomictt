@@ -110,6 +110,9 @@ export interface CartItemInput {
 
   // 餐盒费信息（从商品详情的box字段获取，可能为空）
   boxInfo?: CartBoxInfo;
+
+  // 活动ID（用于折扣等营销活动）
+  activityId?: string;
 }
 
 /**
@@ -148,6 +151,9 @@ export interface CartItem {
 
   // 餐盒费信息（从商品详情的box字段获取，可能为空）
   boxInfo?: CartBoxInfo;
+
+  // 活动ID（用于折扣等营销活动）
+  activityId?: string;
 }
 
 /**

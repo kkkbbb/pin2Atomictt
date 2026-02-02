@@ -68,22 +68,31 @@ export class PriceTransformer {
    * @param priceFields 价格字段名称数组
    * @returns 转换后的新对象（不修改原对象）
    */
-  static transformPriceFields<T extends Record<string, ESObject>>(
+  static transformPriceFields<T extends Record<string, string | number | object>>(
     obj: T,
     priceFields: string[]
   ): T {
-    const result: Record<string, ESObject> = {};
+    const result: Record<string, string | number | object> = {};
 
-    // 复制所有字段
-    for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        result[key] = obj[key];
-      }
+    // 复制所有字段 (使用 Object.keys 避免 hasOwnProperty)
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      result[key] = obj[key];
     }
 
-    // 转换价格字段
-    for (const field of priceFields) {
-      if (result.hasOwnProperty(field)) {
+    // 转换价格字段 (通过遍历 priceFields 而不是使用 in 操作符)
+    for (let i = 0; i < priceFields.length; i++) {
+      const field = priceFields[i];
+      const keys = Object.keys(result);
+      let found = false;
+      for (let j = 0; j < keys.length; j++) {
+        if (keys[j] === field) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
         const value = result[field];
         if (typeof value === 'string' || typeof value === 'number') {
           result[field] = PriceTransformer.toNumber(value as string | number);

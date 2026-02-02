@@ -153,7 +153,6 @@ struct CheckoutPage {
       this.hasDiscount = state.hasDiscount;
       this.discountRate = state.discountRatio;
       this.discountName = state.discountLabel;
-      this.activityId = state.activityId;
       this.recalculateDiscount();
     });
     this.discountUnsubscribe = discountState.subscribe(discObserver);
@@ -163,7 +162,6 @@ struct CheckoutPage {
     this.hasDiscount = currentDiscountState.hasDiscount;
     this.discountRate = currentDiscountState.discountRatio;
     this.discountName = currentDiscountState.discountLabel;
-    this.activityId = currentDiscountState.activityId;
 
     this.loadData();
     this.getTopSafeHeight();
